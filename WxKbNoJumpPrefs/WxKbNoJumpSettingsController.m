@@ -4,7 +4,7 @@
 //  关键：本控制器只在「设置」进程（arm64e）里被 NSBundle 加载。
 //  写法严格对齐同机已验证可用的 键盘下方状态(KSSettingsController)：
 //   - specifiers 直接读写真实的 _specifiers 裸 ivar（PSListController 内部就读它）
-//   - 面板 UI 一律放 viewDidLoad，访问 self.tableView（不是 self.table）
+//   - 面板 UI 一律放 viewDidLoad，访问 self.table（本机框架）并兼容 self.tableView
 //   - 任何偏好写入都先 [super setPreferenceValue:...]（走 cfprefsd，沙盒安全）
 //
 
@@ -95,7 +95,8 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
     [super viewDidLoad];
     self.title = @"微信键盘免跳转";
 
-    // 顶部预览视图（tableHeaderView），self.tableView 在 super 之后一定存在
+    // 顶部预览视图（tableHeaderView）。⚠️ 本机 Preferences 框架的 PSListController 用
+    // -table 访问器（非 -tableView），两者都兼容：先试 table，再退 tableView。
     CGFloat W = self.view.bounds.size.width > 0 ? self.view.bounds.size.width : 320;
     CGFloat headerH = 150;
     self.preview = [[WxKbKeyboardPreviewView alloc] initWithFrame:CGRectMake(16, 8, W - 32, headerH - 16)];
@@ -103,7 +104,10 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, W, headerH)];
     header.backgroundColor = [UIColor clearColor];
     [header addSubview:self.preview];
-    self.tableView.tableHeaderView = header;
+    UITableView *tv = nil;
+    if ([self respondsToSelector:@selector(table)]) tv = [self table];
+    else if ([self respondsToSelector:@selector(tableView)]) tv = [self tableView];
+    tv.tableHeaderView = header;
 
     [self refreshPreview];
 }
