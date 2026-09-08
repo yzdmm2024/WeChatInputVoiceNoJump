@@ -16,6 +16,7 @@
 - (NSArray *)loadSpecifiersFromPlistName:(NSString *)name target:(id)target;
 - (id)specifierAtIndexPath:(NSIndexPath *)indexPath;
 - (UITableView *)table;
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath;
 @end
 
 @interface PSSpecifier : NSObject
