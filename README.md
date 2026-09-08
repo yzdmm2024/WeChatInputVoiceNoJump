@@ -33,12 +33,16 @@
   导致 `PSListController` 加载不到 specifiers → 设置里**只有标题、下面全空白**。
   → 改用 `layout/Library/PreferenceBundles/WxKbNoJumpPrefs.bundle/` 直接把 `Root.plist`+`Info.plist` 打进 bundle（已验证有效）
 
+- **坑F（面板空白：关联对象 vs `_specifiers` ivar）**：`PSListController` 内部用 `_specifiers` 实例变量读列表。
+  若在 `-specifiers` 里用 `objc_get/setAssociatedObject` 存数组，框架读到的 `_specifiers` 永远是 nil → 标题在、内容全空。
+  → 改用 `class_getInstanceVariable` + `object_get/setIvar` 直接读写真实的 `_specifiers` ivar（按名字取，无需私有头）
+
 ## 本地构建
 
 ```bash
 export THEOS=/path/to/theos
 make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-# 产物： packages/com.wxkbd.nojump_1.1.2_iphoneos-arm64.deb
+# 产物： packages/com.wxkbd.nojump_1.1.3_iphoneos-arm64.deb
 ```
 
 ## CI 构建（推荐）

@@ -21,13 +21,15 @@
 
 @implementation WxKbNoJumpSettingsController
 
-static const void *kWxSpecKey = &kWxSpecKey;
-
+// 关键修复：PSListController 内部通过自己的 _specifiers 实例变量读取列表。
+// 之前用关联对象存储，框架读到的 _specifiers ivar 永远是 nil → 面板空白。
+// 这里改为直接读写真实的 _specifiers ivar（按名字取，无需私有头），与框架共用同一块内存。
 - (NSArray *)specifiers {
-    NSArray *s = objc_getAssociatedObject(self, kWxSpecKey);
+    Ivar iv = class_getInstanceVariable(object_getClass(self), "_specifiers");
+    NSArray *s = iv ? (__bridge NSArray *)object_getIvar(self, iv) : nil;
     if (!s) {
         s = [self loadSpecifiersFromPlistName:@"Root" target:self];
-        objc_setAssociatedObject(self, kWxSpecKey, s, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (iv) object_setIvar(self, iv, s);
     }
     return s;
 }
