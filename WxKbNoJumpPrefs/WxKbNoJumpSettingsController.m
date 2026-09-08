@@ -26,7 +26,7 @@
 // 这里改为直接读写真实的 _specifiers ivar（按名字取，无需私有头），与框架共用同一块内存。
 - (NSArray *)specifiers {
     Ivar iv = class_getInstanceVariable(object_getClass(self), "_specifiers");
-    NSArray *s = iv ? (__bridge NSArray *)object_getIvar(self, iv) : nil;
+    NSArray *s = iv ? (NSArray *)object_getIvar(self, iv) : nil;
     if (!s) {
         s = [self loadSpecifiersFromPlistName:@"Root" target:self];
         if (iv) object_setIvar(self, iv, s);
