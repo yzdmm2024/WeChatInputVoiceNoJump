@@ -1,5 +1,6 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
+#import <spawn.h>
 
 @interface WeChatVoiceSettingsController : PSListController
 - (void)respring;
@@ -20,7 +21,9 @@
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"重启" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-        system("killall -9 SpringBoard");
+        pid_t pid;
+        const char *args[] = {"killall", "-9", "SpringBoard", NULL};
+        posix_spawn(&pid, "/usr/bin/killall", NULL, NULL, (char **)args, NULL);
     }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
