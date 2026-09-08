@@ -1,0 +1,29 @@
+# 微信键盘免跳转 — Theos 工程 (rootless / ElleKit TweakInject)
+# 本地构建: make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+# CI: GitHub Actions 自动构建 (见 .github/workflows/build.yml)
+
+TARGET := iphone:clang:16.5
+ARCHS = arm64e
+
+include $(THEOS)/makefiles/common.mk
+
+# ===== Tweak: 语音免跳转 + 键盘外观定制 =====
+TWEAK_NAME = WxKbNoJump
+WxKbNoJump_FILES = Tweak.xm
+WxKbNoJump_CFLAGS = -fobjc-arc
+WxKbNoJump_FRAMEWORKS = UIKit Foundation
+WxKbNoJump_INSTALL_PATH = /Library/TweakInject
+
+include $(THEOS_MAKE_PATH)/tweak.mk
+
+# ===== 设置面板 PreferenceBundle =====
+BUNDLE_NAME = WxKbNoJumpPrefs
+WxKbNoJumpPrefs_FILES = WxKbNoJumpPrefs/WxKbNoJumpSettingsController.m
+WxKbNoJumpPrefs_RESOURCES = WxKbNoJumpPrefs/Info.plist WxKbNoJumpPrefs/Root.plist
+WxKbNoJumpPrefs_INSTALL_PATH = /Library/PreferenceBundles
+WxKbNoJumpPrefs_FRAMEWORKS = UIKit Foundation Preferences
+WxKbNoJumpPrefs_PRIVATE_FRAMEWORKS = PreferencesUI
+WxKbNoJumpPrefs_CFLAGS = -fobjc-arc
+WxKbNoJumpPrefs_LDFLAGS = -Wl,-undefined,dynamic_lookup
+
+include $(THEOS_MAKE_PATH)/bundle.mk

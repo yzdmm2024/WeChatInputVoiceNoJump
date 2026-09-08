@@ -1,0 +1,28 @@
+name: Build Deb (Theos)
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Theos
+        uses: beerpiss/theos-action@v1
+        with:
+          theos-sdks: https://github.com/theos/sdks
+
+      - name: Build package (rootless)
+        run: make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: WxKbNoJump-deb
+          path: packages/*.deb
+          if-no-files-found: error

@@ -1,98 +1,59 @@
-# 微信键盘免跳转 + 键盘外观定制 (WxKeyboardNoJump)
+# 微信键盘免跳转 (WxKbNoJump)
 
-为 **微信输入法 (com.tencent.wetype, v3.5.3)** 做的 TrollStore 注入式插件。
+微信输入法（WeType）**语音输入全局免跳转** + **键盘外观定制**（圆角 / 大小 / 颜色 / 透明度）。
 
-- **全局语音免跳转**：呼出微信键盘点语音按钮，直接在微信内录音识别，不跳转到微信输入法主程序。
-- **键盘外观定制**：圆角、大小(缩放)、背景色(RGB)、透明度，全部在设置面板里调。
-- **设置面板**：系统-设置 → 微信输入法 →「微信键盘免跳转」分组（原生 Settings.bundle，无需 PreferenceLoader）。
+- 目标设备：iPhone 12 Pro 等 A14（arm64e），iOS 16.6.1
+- 越狱环境：relaxin rootless（/var/jb 前缀，ElleKit / TweakInject 注入）
+- 构建方式：**Theos**（本仓库由 GitHub Actions 在 macOS runner 上自动编译，产出 rootless arm64e deb）
 
-## ⚠️ 适用环境（重要）
+## 功能
 
-本机实测你的设备是 **TrollStore 环境**（relaxin 越狱 app + TrollFools / dylib插件库 注入），
-**不是**传统 `/var/jb` substrate 越狱：
+1. **语音免跳转**：拦截微信键盘「语音」按钮触发的外跳，直接激活键盘内建语音输入，不再跳回主 App。
+   - NSUserDefaults 对微信自带键 `WBAppSettingsBool_VoiceInput_WcVoiceNoJump` 恒返回 YES（最稳）
+   - 语音按钮（`WBFunctionToolBar`）直接激活内建语音
+   - `UIInputViewController` / `NSExtensionContext` / `UIApplication` 三处 `openURL` 拦截 `wetype://` 语音跳转
+2. **键盘外观定制**：系统-设置面板调节圆角、缩放、不透明度、背景 RGB。
 
-| 检查项 | 实测 |
-|---|---|
-| `/var/jb`、dpkg、PreferenceLoader、ElleKit | 均不存在 |
-| `wxkb.app` 位置 | `/private/var/containers/Bundle/Application/<UUID>/wxkb.app` |
-| 签名 | TrollStore 伪签（`_CodeSignature` 在、`embedded.mobileprovision` 不在 → AMFI 豁免，可注入 dylib） |
-| 键盘扩展 | `wxkb.app/PlugIns/wxkb_plugin.appex` → `com.tencent.wetype.keyboard` |
+## 为什么不用手工编译的 deb（历史）
 
-因此本插件**不再用 deb**（旧 `WxKeyboardNoJump_v1.0.0_*.deb` 是给传统越狱的，请勿用）。
-交付物是一个**零依赖 dylib**（不依赖 CydiaSubstrate / ElleKit，任意注入工具可加载）+ 一个 `Settings.bundle`。
+早期手工用 LLVM/clang + lld 编出的 bundle 在 iPhone 12 Pro（arm64e）上被 PreferenceLoader 报
+「已损坏或丢失必要的资源」，根因有三（已在 Theos 工程中修正）：
 
-## 交付物
+- **坑F（arm64e 切片）**：A14 只认 arm64e，手工编出来是 arm64 → `ARCHS = arm64e`
+- **坑E（Preferences 链接）**：面板 bundle 必须链接 Preferences / PreferencesUI 才能加载 PSListController
+  → `WxKbNoJumpPrefs_FRAMEWORKS = UIKit Foundation Preferences` + `PRIVATE_FRAMEWORKS = PreferencesUI`
+- **坑C（入口字段）**：PreferenceLoader 入口 `bundle` 必须等于 bundle 目录名、`detail` 必须等于 `NSPrincipalClass`
+  → `WxKbNoJump.plist` 的 `bundle = WxKbNoJumpPrefs`，`Info.plist` 的 `NSPrincipalClass = WxKbNoJumpSettingsController`
 
-```
-WxKeyboardNoJump/
-├── out/
-│   ├── WxKeyboardNoJump.dylib   ← 注入用 dylib（已 adhoc 签名）
-│   └── Settings.bundle/         ← 放进 wxkb.app，系统-设置里出面板
-├── src/WxKeyboardNoJump.m       ← 源码（纯 ObjC，手动 swizzle）
-├── Settings.bundle/             ← 面板源（Root.plist + 中文）
-├── build.sh                     ← 本地 clang 交叉编译
-└── DEBIAN/  preflist…           ← 旧 substrate 版残留（弃用）
-tools/frida/                     ← 真机探测脚本（diag8/diag9 等）
-logs/                            ← frida 实测日志
-docs/                            ← IPA 静态分析
-```
-
-## 安装到 iPhone 12 Pro (iOS 16.6.1, relaxin)
-
-### 1) 注入 dylib（用 TrollFools 或 dylib插件库）
-- 打开 **TrollFools**（或你的 dylib插件库 app），选择 **微信输入法 (wxkb.app)**；
-- 添加 dylib：`out/WxKeyboardNoJump.dylib`；
-- 若工具支持注入扩展，对 **`wxkb_plugin.appex`（键盘扩展）** 也加同一 dylib
-  （免跳转开关在键盘扩展里生效，建议两个都注入；只注入主程序也通常够用）。
-- 工具会自动加 `LC_LOAD_DYLIB` 并重签。
-
-### 2) 放入设置面板（用 Filza）
-- 把 `out/Settings.bundle` 整个文件夹复制到
-  `/private/var/containers/Bundle/Application/<UUID>/wxkb.app/Settings.bundle`
-  （UUID 即装 wxkb.app 的那个目录，路径见上方实测）。
-- 改完不需重签（Settings.bundle 是资源，TrollStore 的 CoreTrust 绕过覆盖整包）。
-
-### 3) 生效
-- 杀掉微信输入法主程序与键盘：设置里「注销」或 `killall -9 wxkb` / 直接重启。
-- 打开微信，切到微信输入法，点语音按钮 → **应在微信内直接录音，不跳转**。
-- 进 **系统-设置 → 微信输入法**，底部出现「微信键盘免跳转」分组，调开关/滑块，
-  回微信重新呼出键盘即生效（外观默认值关闭，需打开「启用外观定制」）。
-
-## 工作原理
-
-1. **免跳转（双保险）**
-   - hook `NSUserDefaults -objectForKey:/-boolForKey:`，对微信自带键
-     `WBAppSettingsBool_VoiceInput_WcVoiceNoJump` 永远返回 YES（开启时）。
-     该键即微信输入法自身的「微信语音免跳转」开关（二进制里还有字面
-     `WtAppActionOpenVoiceNoRedirectionWechat` 等佐证）。
-   - 额外 hook `UIApplication -openURL:`，吞掉 `wetype://` 的语音跳转 URL，兜底。
-2. **外观定制**
-   - hook `WBInputViewController -viewDidLayoutSubviews`，按设置套用
-     圆角 / 缩放 / 背景色 / 透明度。
-3. **偏好共享（关键）**
-   - 主程序与键盘扩展数据容器不同，普通 NSUserDefaults 跨不过去。
-   - `Settings.bundle` 把设置写进 `com.tencent.wetype`；注入主程序的 dylib 监听
-     `com.apple.Preferences/changed`，实时镜像到全局文件
-     `/var/mobile/Library/Preferences/com.user.wxkbdnojump.plist`；
-     键盘扩展的 dylib 直接读该全局文件。免跳转默认开、外观默认关。
-
-## 重新编译（改代码后）
-
-本机已配好工具链（LLVM18 + iOS16 SDK，无需 WSL）：
+## 本地构建
 
 ```bash
-cd WxKeyboardNoJump
-bash build.sh
-# 产物：out/WxKeyboardNoJump.dylib + out/Settings.bundle
+export THEOS=/path/to/theos
+make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+# 产物： packages/com.wxkbd.nojump_1.1.0_iphoneos-arm64e.deb
 ```
 
-## 排错
+## CI 构建（推荐）
 
-- **面板不出现**：确认 `Settings.bundle` 真的进了 `wxkb.app` 根目录（不是子目录），且 wxkb.app 是 TrollStore 装的。
-- **免跳转不生效**：确认 dylib 注入进了 `wxkb_plugin.appex`（键盘扩展）；用 `frida -U -f com.tencent.wetype -l tools/frida/diag_panel.js` 看 load 日志 `[WxKeyboardNoJump] loaded`。
-- **外观不生效**：打开「启用外观定制」；若改完没反应，杀一次 wxkb.app 让它重新把设置镜像到全局文件。
+push 到 `master` 触发 GitHub Actions（`beerpiss/theos-action` + Theos），
+自动产出 rootless arm64e deb，可在 **Actions → Build Deb → Artifacts** 下载。
 
-## 已知限制
+## 目录结构
 
-- 微信输入法若改了免跳转键名，搜 `WcVoiceNoJump` / `NoRedirection` 重抓即可。
-- 面板嵌套在「微信输入法」设置内（原生 Settings.bundle 行为），非独立顶级条目。
+```
+Makefile                          Theos 工程（tweak + preference bundle）
+Tweak.xm                         免跳转 + 外观逻辑（ObjC，手工 swizzle）
+WxKbNoJump.plist                 tweak Filter（注入进程）
+WxKbNoJumpPrefs/                 设置面板 bundle 源码
+  ├─ WxKbNoJumpSettingsController.m
+  ├─ Info.plist  Root.plist
+control                          deb 包元数据
+layout/var/jb/Library/PreferenceLoader/Preferences/WxKbNoJump.plist   面板入口
+.github/workflows/build.yml      CI 构建
+archive/                         早期手工编译尝试 + 参考仓库（已废弃，仅供追溯）
+docs/ logs/ tools/               分析文档 / 开发诊断日记 / frida 脚本
+```
+
+## 安装
+
+用 Filza / Sileo / dpkg 安装 `packages/*.deb`（需 rootless 环境 + PreferenceLoader + ElleKit）。
