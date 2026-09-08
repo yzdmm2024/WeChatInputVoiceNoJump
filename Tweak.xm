@@ -14,8 +14,9 @@
 //   3) openURL 拦截：UIInputViewController / NSExtensionContext / UIApplication 三处，
 //      凡是从扩展发出的 wetype:// 语音跳转一律吞掉；并拦掉语音/麦克风/权限设置页弹出。
 //
-//  外观定制：hook WBInputViewController -viewDidLayoutSubviews，把圆角/大小/颜色/透明度
-//  应用到键盘根视图（WBRootInputView 或 self.view）。
+//  外观定制：hook WBInputViewController -viewDidLayoutSubviews，从键盘根视图下钻子视图树，
+//  给「每个按键」单独加圆角，给键盘背景/托盘上色（红/绿/蓝/不透明度）。
+//  注意：圆角只作用于按键，不圆整整块键盘；背景色作用在可见的键盘托盘，而非被遮挡的根视图。
 //
 //  ⚠️ 修复记录（相对原始提交的 12 个问题）：
 //     [FIX1] kWxSuite 重复定义 → 删除第二处
@@ -111,19 +112,68 @@ static BOOL wx_styleChanged(
     return changed;
 }
 
-#pragma mark - 外观应用
+#pragma mark - 外观应用（按键级圆角 + 键盘背景色）
+
+static const void *kWxOrigBg = &kWxOrigBg;
+
+// 判断是否为「按键」视图（字母/数字/符号小键），而非整块键盘/工具栏/布局
+static BOOL wx_isKeyView(Class cls) {
+    if (!cls) return NO;
+    NSString *n = NSStringFromClass(cls);
+    if ([n isEqualToString:@"UIKBKeyView"]) return YES;                 // 系统键盘键
+    if ([n localizedCaseInsensitiveContainsString:@"KeyView"] ||
+        [n localizedCaseInsensitiveContainsString:@"KeyButton"]) return YES;
+    if ([n localizedCaseInsensitiveContainsString:@"Key"] &&
+        ![n localizedCaseInsensitiveContainsString:@"Keyboard"] &&
+        ![n localizedCaseInsensitiveContainsString:@"Keyplane"] &&
+        ![n localizedCaseInsensitiveContainsString:@"Layout"] &&
+        ![n localizedCaseInsensitiveContainsString:@"Manager"] &&
+        ![n localizedCaseInsensitiveContainsString:@"Controller"] &&
+        ![n localizedCaseInsensitiveContainsString:@"Toolbar"]) return YES;
+    return NO;
+}
+
+// 判断是否为「键盘背景/托盘」视图（承载键盘底色，圆角不该作用到这里）
+static BOOL wx_isBgView(Class cls) {
+    if (!cls) return NO;
+    NSString *n = NSStringFromClass(cls);
+    return ([n localizedCaseInsensitiveContainsString:@"Background"] ||
+            [n localizedCaseInsensitiveContainsString:@"Backdrop"] ||
+            [n localizedCaseInsensitiveContainsString:@"Tray"] ||
+            [n localizedCaseInsensitiveContainsString:@"Panel"] ||
+            [n localizedCaseInsensitiveContainsString:@"Blur"] ||
+            [n localizedCaseInsensitiveContainsString:@"Effect"] ||
+            [n localizedCaseInsensitiveContainsString:@"Dim"] ||
+            [n localizedCaseInsensitiveContainsString:@"Vibrancy"]);
+}
+
+// 递归遍历：对按键执行 keyBlk、对背景执行 bgBlk（同一视图只归一类，优先按键）
+static void wx_walk(UIView *v, void (^keyBlk)(UIView *), void (^bgBlk)(UIView *)) {
+    if (!v) return;
+    Class cls = [v class];
+    if (wx_isKeyView(cls)) { if (keyBlk) keyBlk(v); }
+    else if (wx_isBgView(cls)) { if (bgBlk) bgBlk(v); }
+    for (UIView *s in v.subviews) wx_walk(s, keyBlk, bgBlk);
+}
 
 static void wx_applyStyle(UIView *root) {
     if (!root) return;
+
     if (!wx_bool(kStyleEnabled, NO)) {
-        // 关闭时若有残留改动的 transform/alpha，需要复位，防止键盘被永久缩放/半透明。
+        // 关闭：还原按键圆角 + 还原背景原色，防止残留
+        wx_walk(root,
+            ^(UIView *k){
+                if (k.layer.cornerRadius != 0) k.layer.cornerRadius = 0;
+                if (k.layer.masksToBounds) k.layer.masksToBounds = NO;
+            },
+            ^(UIView *b){
+                UIColor *orig = objc_getAssociatedObject(b, kWxOrigBg);
+                if (orig) b.backgroundColor = orig;
+            });
         if (!CGAffineTransformIsIdentity(root.transform)) root.transform = CGAffineTransformIdentity;
-        if (fabs(root.alpha - 1.0) > 0.01) root.alpha = 1.0;
-        if (CGAffineTransformIsIdentity(root.transform) && fabs(root.alpha - 1.0) <= 0.01) {
-            // 复位完，重置缓存让下次开启时能重新应用
-            wx_px_cachedCorner = wx_px_cachedR = wx_px_cachedG = wx_px_cachedB = -1.0;
-            wx_px_cachedAlpha = wx_px_cachedScale = -1.0;
-        }
+        // 复位缓存
+        wx_px_cachedCorner = wx_px_cachedR = wx_px_cachedG = wx_px_cachedB = -1.0;
+        wx_px_cachedAlpha = wx_px_cachedScale = -1.0;
         return;
     }
 
@@ -133,27 +183,39 @@ static void wx_applyStyle(UIView *root) {
     CGFloat b  = MIN(MAX(wx_float(kBgB, 0.20), 0), 1);
     CGFloat a  = MIN(MAX(wx_float(kBgAlpha, 1.0), 0.2), 1);
     CGFloat sc = MIN(MAX(wx_float(kScale, 1.0), 0.6), 1.4);
+    (void)wx_styleChanged(cr, r, g, b, a, sc);  // 保留缓存接口（动态换页时每帧重绘更稳）
 
-    if (!wx_styleChanged(cr, r, g, b, a, sc)) return;
+    UIColor *bgColor = [UIColor colorWithRed:r green:g blue:b alpha:a];
 
-    // [FIX4][FIX5] 背景色直接用 alpha 通道表达透明度，避免整棵键盘树变透明/点按错位。
-    root.backgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:a];
-    root.layer.cornerRadius = cr;
-    root.layer.masksToBounds = (cr > 0);
+    // 1) 每个按键：只加圆角（不改键背景色，保留原键外观；绝不圆整整块键盘）
+    wx_walk(root,
+        ^(UIView *k){
+            k.layer.cornerRadius = cr;
+            k.layer.masksToBounds = (cr > 0);
+        },
+        ^(UIView *bv){
+            // 2) 键盘背景/托盘：上色（首次记录原色，关闭时还原）
+            if (!objc_getAssociatedObject(bv, kWxOrigBg)) {
+                objc_setAssociatedObject(bv, kWxOrigBg,
+                    (bv.backgroundColor ?: [UIColor clearColor]),
+                    OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            bv.backgroundColor = bgColor;
+        });
 
-    // [FIX4] 缩放：不直接改 root.transform（会让按键坐标错位、无法贴底）。
-    // 改为对一个只承载背景的容器应用缩放意义不大；这里保守处理——缩放全局关闭，
-    // 仅在设置里明确要求时才用 kScale，且只在非 Apple 键盘的输入视图做 frame 级适配。
-    // 说明：真正的键盘大小应由 WeType 自身设置页调节，本 tweak 只做外观层；
-    // 若用户需求是「整体缩放」，可在信号量受控下改 root.frame 而非 transform，
-    // 但那会破坏系统对键盘布局的布局约束，暂不采纳。此处保留 transform 但恢复为 1.0。
-    // （scale<1 缩小、scale>1 放大可通过 UIView 的 transform 实现，但会引入点按偏移。
-    //   为安全，缩放超 1% 时才应用，且配合下面自动向右下偏移补偿。）
-    if (fabs(sc - 1.0) > 0.01) {
-        root.transform = CGAffineTransformMakeScale(sc, sc);
-    } else {
-        root.transform = CGAffineTransformIdentity;
+    // 3) 面板本身（WBRootInputView）兜底上色，让整条键盘底色随滑块变化
+    Class rvCls = NSClassFromString(@"WBRootInputView");
+    if (rvCls && [root isKindOfClass:rvCls]) {
+        if (!objc_getAssociatedObject(root, kWxOrigBg))
+            objc_setAssociatedObject(root, kWxOrigBg,
+                (root.backgroundColor ?: [UIColor clearColor]),
+                OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        root.backgroundColor = bgColor;
     }
+
+    // 4) 整体缩放（root.transform，保留原行为；默认 kScale=1 不缩放）
+    root.transform = (fabs(sc - 1.0) > 0.01)
+        ? CGAffineTransformMakeScale(sc, sc) : CGAffineTransformIdentity;
 }
 
 #pragma mark - 在键盘扩展里直接激活内建语音输入（第三方 app 免跳转核心）
@@ -398,7 +460,24 @@ static BOOL wx_noJumpActive(void) { return wx_bool(kNoJumpEnabled, YES); }
 
     // [FIX6] 用 NSString 做前缀/匹配，规避 Swift 混名（_TtC...）被 strncmp 误伤。
     NSString *c = cn;
-    // 微信键盘自己的 VC（WB*/WZ*/Wt*/WXKB* 开头）放行，不误拦内部语音界面
+
+    // 键盘扩展进程内：微信输入法在第三方 App 里点语音会 present 一个全屏语音 VC
+    // （WBVoice* / Redirect* 等），表现就是「跳一下 + 黑屏」。这里直接拦掉它，
+    // 改为激活键盘内建语音，达到与微信主 App 内一致的免跳效果。
+    if (wx_isKbExtension()) {
+        if ([c localizedCaseInsensitiveContainsString:@"Voice"] ||
+            [c localizedCaseInsensitiveContainsString:@"Speech"] ||
+            [c localizedCaseInsensitiveContainsString:@"Redirect"] ||
+            [c localizedCaseInsensitiveContainsString:@"Recognize"] ||
+            [c localizedCaseInsensitiveContainsString:@"ASR"] ||
+            [c localizedCaseInsensitiveContainsString:@"Record"]) {
+            NSLog(@"[WxKbNoJump] 拦截扩展内语音/跳转 VC: %@", cn);
+            wx_tryActivateVoiceInKeyboard(nil);
+            return;
+        }
+    }
+
+    // 主 app / 非语音场景：微信内部 VC（WB*/WZ*/Wt*/WXKB*）放行，不误拦
     if ([c hasPrefix:@"WB"] || [c hasPrefix:@"WZ"] ||
         [c hasPrefix:@"Wt"] || [c hasPrefix:@"WXKB"]) {
         [self wx_present:vc animated:flag completion:completion];

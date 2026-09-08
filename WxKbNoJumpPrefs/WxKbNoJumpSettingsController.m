@@ -39,13 +39,11 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
     CGFloat W = self.bounds.size.width;
     CGFloat H = self.bounds.size.height;
 
-    // 键盘背景
+    // 键盘托盘背景：平铺底色（不圆角——整块键盘不圆角，圆角只作用在按键上）
     CGContextSetRGBFillColor(ctx, self.red, self.green, self.blue, self.alpha);
-    UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:self.bounds
-                                                  cornerRadius:self.radius];
-    [bg fill];
+    CGContextFillRect(ctx, self.bounds);
 
-    // 三排按键（简化布局，仅用于预览外观）
+    // 三排按键（简化布局，仅用于预览外观）：每个键画成圆角矩形
     NSArray *rows = @[
         @[@"Q",@"W",@"E",@"R",@"T",@"Y",@"U",@"I",@"O",@"P"],
         @[@"A",@"S",@"D",@"F",@"G",@"H",@"J",@"K",@"L"],
@@ -60,8 +58,11 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
         for (int j = 0; j < keys.count; j++) {
             CGFloat x = margin + j * (keyW + margin);
             CGRect krect = CGRectMake(x, top, keyW, rowH - margin);
-            CGContextSetRGBFillColor(ctx, 0.9, 0.9, 0.92, 1.0);
-            CGContextFillRect(ctx, krect);
+            // 按键本体：圆角矩形，实时反映「按键圆角」滑块
+            CGContextSetRGBFillColor(ctx, 0.92, 0.92, 0.95, 1.0);
+            UIBezierPath *kr = [UIBezierPath bezierPathWithRoundedRect:krect
+                                                          cornerRadius:self.radius];
+            [kr fill];
             UIColor *tc = [UIColor darkGrayColor];
             NSDictionary *attrs = @{ NSFontAttributeName: [UIFont systemFontOfSize:rowH * 0.35],
                                      NSForegroundColorAttributeName: tc };

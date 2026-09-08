@@ -46,6 +46,11 @@
   → 重写 `tableView:cellForRowAtIndexPath:` 给每个滑块左侧强制显示中文名、右侧显示当前值；
     在面板顶部加一个 `WxKbKeyboardPreviewView` 绘制简化 QWERTY 键盘，滑动时实时刷新预览。
 
+- **坑I（颜色/圆角不起效 + 第三方还跳）**：1.1.10 把背景色/圆角设到了被遮挡的键盘根视图，所以「颜色压根不起效」、圆角也只在整块键盘上。
+  且 `wx_present` 把**所有 `WB*` VC 一律放行**，第三方 App 里微信输入法 present 的全屏语音 VC（WBVoice*/Redirect*）正好被放过 → 跳一下/黑屏。
+  → 1.1.11：`wx_applyStyle` 改为下钻子视图树，给每个按键（`UIKBKeyView`/含 Key 的 WB 类）单独加圆角，给键盘背景/托盘上色（首次记录原色、关闭还原）；
+    `wx_present` 在键盘扩展进程内拦截 Voice/Speech/Redirect/Recognize/ASR/Record 类 VC 并改激活内建语音，其余 WB* 内部 VC 仍放行。
+
 ## 本地构建
 
 ```bash
