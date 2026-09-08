@@ -33,8 +33,8 @@ static BOOL isEnabled(void) {
             return;
         }
         
-        // 向上遍历找到WBRootInputView
-        UIView *v = [self superview];
+        // 向上遍历找到WBRootInputView（使用objc_msgSend避免forward declaration问题）
+        UIView *v = ((UIView *(*)(id, SEL))objc_msgSend)(self, @selector(superview));
         BOOL found = NO;
         while (v) {
             if ([v isKindOfClass:WBRootInputViewClass]) {
