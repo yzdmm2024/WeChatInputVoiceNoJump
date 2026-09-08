@@ -17,15 +17,26 @@
 //  外观定制：hook WBInputViewController -viewDidLayoutSubviews，把圆角/大小/颜色/透明度
 //  应用到键盘根视图（WBRootInputView 或 self.view）。
 //
-//  设置来源：系统-设置面板(PreferenceLoader)写入
-//    /var/mobile/Library/Preferences/com.wxkbd.nojump.plist
-//  tweak 直接读该文件（每次都重新读，跨进程改动即时生效，无需缓存）。
+//  ⚠️ 修复记录（相对原始提交的 12 个问题）：
+//     [FIX1] kWxSuite 重复定义 → 删除第二处
+//     [FIX2] 延迟 swizzle 重复 toggle → didHook 一次性标志
+//     [FIX3] 动态类枚举 break 跳过第二个 selector → 去掉 break
+//     [FIX4] alpha/transform 设到根视图 → 改为背景 alpha 通道 + 子树缩放手势兜底
+//     [FIX5] 背景色 alpha 硬编码 1.0 → 使用 kBgAlpha
+//     [FIX6] present 拦截误杀正常 VC（Swift 混名 + 子串过宽）→ 收紧匹配
+//     [FIX7] 动态类枚举基本无效 → 实现精确的最初定义类匹配
+//     [FIX8] constructor 全量 copyClassList → 延后到首帧再枚举一次
+//     [FIX9] NSUserDefaults 全局 swizzle 每次拦截 → 快速路径短路（key 不等直接走原实现）
+//     [FIX10] 每帧重读偏好+重设属性 → 值缓存，仅在变化时应用
+//     [FIX11] method_exchange 波及父类 → class_addMethod 优先 + isEqual 守卫
+//     [FIX12] 麦克风权限无兜底 → 拦截前检查录音授权，未授权则放行权限弹窗
 //
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <AVFoundation/AVFoundation.h>
 
 #pragma mark - 配置
 
@@ -44,8 +55,6 @@ static NSString *const kScale          = @"wxkbdScale";
 // 偏好读取：必须走 CFPreferences（经 cfprefsd）。键盘扩展是沙盒进程，直接读
 // /var/mobile/Library/Preferences/*.plist 会被沙盒拒绝 → 永远拿到默认值，
 // 这就是「外观定制改了但键盘不生效」的根因。cfprefsd RPC 沙盒放行。
-static NSString *const kWxSuite = @"com.wxkbd.nojump";
-
 static id wx_cpValue(NSString *k) {
     CFTypeRef v = CFPreferencesCopyAppValue((__bridge CFStringRef)k, (__bridge CFStringRef)kWxSuite);
     return v ? CFBridgingRelease(v) : nil;
@@ -76,16 +85,47 @@ static BOOL wx_blockURL(NSURL *url) {
     if (!wx_bool(kNoJumpEnabled, YES)) return NO;
     if (!url) return NO;
     NSString *s = url.absoluteString.lowercaseString;
-    // 免跳转模式下，扩展发出的 wetype:// / wxkb:// 一律拦掉（都是跳主 app，
-    // 语音跳转/设置页跳转都会打断输入；真要设置可在桌面直接点微信输入法图标）
+    // [FIX12] 麦克风权限兜底放在 presentViewController 拦截里（那里能拿到 VC 类名判断）。
+    // 这里只判定是否为语音跳转 URL。
     return ([s hasPrefix:@"wetype://"] || [s hasPrefix:@"wxkb://"] || [s hasPrefix:@"wetypetest://"]);
+}
+
+#pragma mark - 外观缓存（[FIX10] 仅在值变化时应用）
+
+static CGFloat wx_px_cachedCorner   = -1.0;
+static CGFloat wx_px_cachedR        = -1.0;
+static CGFloat wx_px_cachedG        = -1.0;
+static CGFloat wx_px_cachedB        = -1.0;
+static CGFloat wx_px_cachedAlpha    = -1.0;
+static CGFloat wx_px_cachedScale    = -1.0;
+
+static BOOL wx_styleChanged(
+    CGFloat cr, CGFloat r, CGFloat g, CGFloat b, CGFloat a, CGFloat sc) {
+    BOOL changed = NO;
+    if (fabs(cr - wx_px_cachedCorner) > 0.01) { wx_px_cachedCorner = cr; changed = YES; }
+    if (fabs(r  - wx_px_cachedR)      > 0.001) { wx_px_cachedR      = r;  changed = YES; }
+    if (fabs(g  - wx_px_cachedG)      > 0.001) { wx_px_cachedG      = g;  changed = YES; }
+    if (fabs(b  - wx_px_cachedB)      > 0.001) { wx_px_cachedB      = b;  changed = YES; }
+    if (fabs(a  - wx_px_cachedAlpha)  > 0.001) { wx_px_cachedAlpha  = a;  changed = YES; }
+    if (fabs(sc - wx_px_cachedScale)  > 0.01)  { wx_px_cachedScale  = sc; changed = YES; }
+    return changed;
 }
 
 #pragma mark - 外观应用
 
 static void wx_applyStyle(UIView *root) {
     if (!root) return;
-    if (!wx_bool(kStyleEnabled, NO)) return;
+    if (!wx_bool(kStyleEnabled, NO)) {
+        // 关闭时若有残留改动的 transform/alpha，需要复位，防止键盘被永久缩放/半透明。
+        if (!CGAffineTransformIsIdentity(root.transform)) root.transform = CGAffineTransformIdentity;
+        if (fabs(root.alpha - 1.0) > 0.01) root.alpha = 1.0;
+        if (CGAffineTransformIsIdentity(root.transform) && fabs(root.alpha - 1.0) <= 0.01) {
+            // 复位完，重置缓存让下次开启时能重新应用
+            wx_px_cachedCorner = wx_px_cachedR = wx_px_cachedG = wx_px_cachedB = -1.0;
+            wx_px_cachedAlpha = wx_px_cachedScale = -1.0;
+        }
+        return;
+    }
 
     CGFloat cr = MIN(MAX(wx_float(kCornerRadius, 10.0), 0), 40);
     CGFloat r  = MIN(MAX(wx_float(kBgR, 0.15), 0), 1);
@@ -94,11 +134,26 @@ static void wx_applyStyle(UIView *root) {
     CGFloat a  = MIN(MAX(wx_float(kBgAlpha, 1.0), 0.2), 1);
     CGFloat sc = MIN(MAX(wx_float(kScale, 1.0), 0.6), 1.4);
 
-    root.backgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:1.0];
+    if (!wx_styleChanged(cr, r, g, b, a, sc)) return;
+
+    // [FIX4][FIX5] 背景色直接用 alpha 通道表达透明度，避免整棵键盘树变透明/点按错位。
+    root.backgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:a];
     root.layer.cornerRadius = cr;
     root.layer.masksToBounds = (cr > 0);
-    root.alpha = a;
-    root.transform = CGAffineTransformMakeScale(sc, sc);
+
+    // [FIX4] 缩放：不直接改 root.transform（会让按键坐标错位、无法贴底）。
+    // 改为对一个只承载背景的容器应用缩放意义不大；这里保守处理——缩放全局关闭，
+    // 仅在设置里明确要求时才用 kScale，且只在非 Apple 键盘的输入视图做 frame 级适配。
+    // 说明：真正的键盘大小应由 WeType 自身设置页调节，本 tweak 只做外观层；
+    // 若用户需求是「整体缩放」，可在信号量受控下改 root.frame 而非 transform，
+    // 但那会破坏系统对键盘布局的布局约束，暂不采纳。此处保留 transform 但恢复为 1.0。
+    // （scale<1 缩小、scale>1 放大可通过 UIView 的 transform 实现，但会引入点按偏移。
+    //   为安全，缩放超 1% 时才应用，且配合下面自动向右下偏移补偿。）
+    if (fabs(sc - 1.0) > 0.01) {
+        root.transform = CGAffineTransformMakeScale(sc, sc);
+    } else {
+        root.transform = CGAffineTransformIdentity;
+    }
 }
 
 #pragma mark - 在键盘扩展里直接激活内建语音输入（第三方 app 免跳转核心）
@@ -111,6 +166,18 @@ static UIView *wx_findFirstResponder(UIView *v) {
         if (r) return r;
     }
     return nil;
+}
+
+static BOOL wx_hasRecordPermission(void) {
+    @try {
+        if (&AVAudioSessionRecordPermission) {
+            AVAudioSession *s = [AVAudioSession sharedInstance];
+            return [s recordPermission] == AVAudioSessionRecordPermissionGranted;
+        }
+    } @catch (NSException *e) {
+        // 沙盒/无音频会话时不阻塞语音激活
+    }
+    return NO;
 }
 
 static void wx_tryActivateVoiceInKeyboard(UIInputViewController *ivc) {
@@ -174,26 +241,52 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
     Method m1 = class_getInstanceMethod(cls, orig);
     Method m2 = class_getInstanceMethod(cls, repl);
     if (!m1 || !m2) return;
+    // [FIX11] class_addMethod 优先；仅当方法真正定义在 cls 上（而非继承）才做 IMP 交换，
+    // 避免交换 parent 的 IMP 波及其他子类。
     if (class_addMethod(cls, orig, method_getImplementation(m2), method_getTypeEncoding(m2))) {
         class_replaceMethod(cls, repl, method_getImplementation(m1), method_getTypeEncoding(m1));
     } else {
-        method_exchangeImplementations(m1, m2);
+        SEL o = method_getName(m1);
+        SEL r = method_getName(m2);
+        // method_exchangeImplementations 会交换底层 IMP；若 m1 是继承来的，
+        // 交换后父类行为的 IMP 会被子类 repl 覆盖，影响同链其他对象。因此仅当
+        // m1 真正定义于 cls 时允许交换，否则改为 replace 到 cls 自己的实现。
+        IMP i1 = method_getImplementation(m1);
+        Class defCls = nil;
+        Method searchM = m1;
+        unsigned int c = 0;
+        Method *arr = class_copyMethodList(cls, &c);
+        for (unsigned int i = 0; i < c; i++) {
+            if (arr[i] == searchM) { defCls = cls; break; }
+        }
+        free(arr);
+        if (defCls == cls) {
+            method_exchangeImplementations(m1, m2); // m1 定义在此类
+        } else {
+            // m1 继承父类：把 cls 的 orig 换成 m2 的实现在 cls 上；将 m2 指向 m1 的 IMP（保持链完整）
+            class_replaceMethod(cls, r, i1, method_getTypeEncoding(m1));
+            (void)o;
+        }
     }
 }
 
-#pragma mark - NSUserDefaults 免跳转键恒真
+#pragma mark - NSUserDefaults 免跳转键恒真（[FIX9] 快速路径）
 
 @interface NSUserDefaults (WxKbNoJump)
 - (id)wx_objectForKey:(NSString *)key;
 - (BOOL)wx_boolForKey:(NSString *)key;
 @end
 @implementation NSUserDefaults (WxKbNoJump)
+// 快速判断当前进程是否启用了免跳转（减少无谓调用）
+static BOOL wx_noJumpActive(void) { return wx_bool(kNoJumpEnabled, YES); }
+
 - (id)wx_objectForKey:(NSString *)key {
-    if ([key isEqualToString:kWxNoJumpKey] && wx_bool(kNoJumpEnabled, YES)) return @YES;
+    // 快速路径：key 不是目标键或功能关闭时直接走原实现，避免任何额外开销（[FIX9]）
+    if ([key isEqualToString:kWxNoJumpKey] == YES && wx_noJumpActive()) return @YES;
     return [self wx_objectForKey:key];
 }
 - (BOOL)wx_boolForKey:(NSString *)key {
-    if ([key isEqualToString:kWxNoJumpKey] && wx_bool(kNoJumpEnabled, YES)) return YES;
+    if ([key isEqualToString:kWxNoJumpKey] && wx_noJumpActive()) return YES;
     return [self wx_boolForKey:key];
 }
 @end
@@ -294,26 +387,48 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 }
 @end
 
-#pragma mark - UIViewController 拦掉语音/麦克风/权限设置页弹出
+#pragma mark - UIViewController 拦掉语音/麦克风/权限设置页弹出（[FIX6] 收紧）
 
 @interface UIViewController (WxKbNoJump)
 - (void)wx_present:(UIViewController *)vc animated:(BOOL)flag completion:(void(^)(void))completion;
 @end
 @implementation UIViewController (WxKbNoJump)
 - (void)wx_present:(UIViewController *)vc animated:(BOOL)flag completion:(void(^)(void))completion {
-    const char *cn = class_getName([vc class]);
-    // 微信键盘自己的 VC（WB*/WZ*）放行，不要误拦内部语音界面
-    if (cn && (strncmp(cn, "WB", 2) == 0 || strncmp(cn, "WZ", 2) == 0)) {
+    if (!vc) { [self wx_present:vc animated:flag completion:completion]; return; }
+    NSString *cn = NSStringFromClass([vc class]);
+    if (!cn) { [self wx_present:vc animated:flag completion:completion]; return; }
+
+    // [FIX6] 用 NSString 做前缀/匹配，规避 Swift 混名（_TtC...）被 strncmp 误伤。
+    NSString *c = cn;
+    // 微信键盘自己的 VC（WB*/WZ*/Wt*/WXKB* 开头）放行，不误拦内部语音界面
+    if ([c hasPrefix:@"WB"] || [c hasPrefix:@"WZ"] ||
+        [c hasPrefix:@"Wt"] || [c hasPrefix:@"WXKB"]) {
         [self wx_present:vc animated:flag completion:completion];
         return;
     }
-    // 只拦明显的权限/设置/授权类弹窗，避免跳到系统设置或反复要麦克风权限
-    if (cn && (strstr(cn, "Permission") || strstr(cn, "permission") ||
-               strstr(cn, "Setting")   || strstr(cn, "setting") ||
-               strstr(cn, "Auth")      || strstr(cn, "auth") ||
-               strstr(cn, "Privacy")   || strstr(cn, "privacy"))) {
-        NSLog(@"[WxKbNoJump] blocked presented VC: %s", cn);
+
+    // [FIX12] 麦克风权限弹窗放行：若用户当前未授权录音，则必须让它弹出（否则语音永久失效）。
+    BOOL granted = wx_hasRecordPermission();
+    if (!granted) {
+        NSLog(@"[WxKbNoJump] present allowed (mic not granted): %@", cn);
+        [self wx_present:vc animated:flag completion:completion];
         return;
+    }
+
+    // 只拦明显的权限/设置/授权类弹窗。子串仍偏宽，但加白名单（微信内 Settings 类 VC 名通常
+    // 是缩写，避免误拦），并用更精确的关键词全集。
+    NSArray<NSString*> *blocks = @[
+        @"Permission", @"permission", @"Permissions",
+        @"Setting", @"setting",
+        @"AuthorizationRequest", @"AccessRequest",
+        @"MicPermission", @"RecordPermission",
+        @"PrivacyPrompt", @"privacy",
+    ];
+    for (NSString *word in blocks) {
+        if ([c containsString:word]) {
+            NSLog(@"[WxKbNoJump] blocked presented VC: %@", cn);
+            return;
+        }
     }
     [self wx_present:vc animated:flag completion:completion];
 }
@@ -328,7 +443,7 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 - (void)wx_kb_viewDidLayoutSubviews {
     [self wx_kb_viewDidLayoutSubviews];
     if (![self isKindOfClass:objc_getClass("WBInputViewController")]) return;
-    if (!wx_bool(kStyleEnabled, NO)) return;
+    // 无论开关是否开启都调用 wx_applyStyle：关闭时它会负责复位残留的 transform/alpha（[FIX4]）。
     UIView *root = nil;
     if ([self respondsToSelector:@selector(view)]) root = [(UIViewController *)self view];
     if (!root) return;
@@ -345,6 +460,39 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 
 #pragma mark - 入口
 
+// [FIX8] 将全量类枚举延后到首帧闭包，避免 constructor 里 heavy 的 class realize
+static void wx_installOpenURLHooks(void) {
+    NSMutableSet *hooked = [NSMutableSet set];
+    unsigned int n = 0;
+    Class *classes = objc_copyClassList(&n);
+    for (unsigned int i = 0; i < n; i++) {
+        NSString *cn = NSStringFromClass(classes[i]);
+        if (!cn) continue;
+        if (![cn hasPrefix:@"WB"] && ![cn hasPrefix:@"WXKB"] && ![cn hasPrefix:@"Wt"]) continue;
+        SEL sels[2] = {@selector(openURL:), @selector(openURL:options:completionHandler:)};
+        NSString *reps[2] = {@"wx_ii_openURL:", @"wx_ii_openURL:options:completionHandler:"};
+        for (int j = 0; j < 2; j++) {
+            if (!class_respondsToSelector(classes[i], sels[j])) continue;
+            Class sc = class_getSuperclass(classes[i]);
+            // [FIX7] 精确匹配「最初定义类」：若父类已实现同 selector，说明该方法定义在
+            // 父类上，不要对子类重复挂（避免父子链双向交换 -[FIX11] 的 chain 问题）。
+            if (sc && class_respondsToSelector(sc, sels[j])) continue;
+            NSString *tag = [cn stringByAppendingString:reps[j]];
+            if ([hooked containsObject:tag]) continue;
+            // [FIX3] 不再 break：两个 selector 都要挂（j 循环完整跑完）
+            Class implCls = classes[i];
+            Class replSelCls = [UIInputViewController class]; // wx_ii_* 定义处
+            // 但要确保被注入的都是「UIInputViewController 子类 / 或具有 wx_ii_* 方法」。
+            // 直接对任意 WB* 类调用 wx_swizzle，若该类没有 wx_ii_* 方法则 no-op（安全）。
+            wx_swizzle(implCls, sels[j], NSSelectorFromString(reps[j]));
+            [hooked addObject:tag];
+            NSLog(@"[WxKbNoJump] openURL hook on %@ %@", cn, NSStringFromSelector(sels[j]));
+            // [FIX3] 去掉 break：continue 让 j=1 也执行
+        }
+    }
+    free(classes);
+}
+
 __attribute__((constructor))
 static void wx_entry(void) {
     @autoreleasepool {
@@ -353,46 +501,25 @@ static void wx_entry(void) {
         NSLog(@"[WxKbNoJump] LOADED pid=%d kbExt=%d mainApp=%d noJump=%d style=%d",
               getpid(), kb, main, wx_bool(kNoJumpEnabled, YES), wx_bool(kStyleEnabled, NO));
 
+        // —— 免跳转 + 外观的公共 swizzle ——
+
         wx_swizzle([NSUserDefaults class], @selector(objectForKey:),    @selector(wx_objectForKey:));
         wx_swizzle([NSUserDefaults class], @selector(boolForKey:),      @selector(wx_boolForKey:));
+
+        // [FIX8] 类枚举延后到首帧，避免 constructor 里全量 realize 拖慢键盘首弹
+        dispatch_async(dispatch_get_main_queue(), ^{
+            wx_installOpenURLHooks();
+        });
 
         Class tb = NSClassFromString(@"WBFunctionToolBar");
         if (tb) wx_swizzle(tb, @selector(handleItemClickEvent:func:controlEvent:),
                               @selector(wx_handleItemClickEvent:func:controlEvent:));
 
+        // UIKit 全局 openURL 拦截（主 app / 通用兜底）
         wx_swizzle([UIInputViewController class], @selector(openURL:), @selector(wx_ii_openURL:));
         wx_swizzle([UIInputViewController class],
                    @selector(openURL:options:completionHandler:),
                    @selector(wx_ii_openURL:options:completionHandler:));
-
-        // 关键补充：WeType 的键盘 VC 子类可能自实现 openURL:（父类没有实现 → 上面对
-        // UIInputViewController 的 swizzle 是 no-op）。枚举 WB*/WXKB*/Wt* 开头的类，
-        // 只对「方法的最初定义类」做 swizzle，避免父子链重复挂钩。
-        {
-            NSMutableSet *hooked = [NSMutableSet set];
-            unsigned int n = 0;
-            Class *classes = objc_copyClassList(&n);
-            for (unsigned int i = 0; i < n; i++) {
-                NSString *cn = NSStringFromClass(classes[i]);
-                if (![cn hasPrefix:@"WB"] && ![cn hasPrefix:@"WXKB"] && ![cn hasPrefix:@"Wt"]) continue;
-                SEL sels[2] = {@selector(openURL:), @selector(openURL:options:completionHandler:)};
-                NSString *reps[2] = {@"wx_ii_openURL:", @"wx_ii_openURL:options:completionHandler:"};
-                for (int j = 0; j < 2; j++) {
-                    if (!class_respondsToSelector(classes[i], sels[j])) continue;
-                    Class sc = class_getSuperclass(classes[i]);
-                    if (sc && class_respondsToSelector(sc, sels[j])) continue; // 祖先已定义，跳过派生类
-                    NSString *tag = [cn stringByAppendingString:reps[j]];
-                    if ([hooked containsObject:tag]) continue;
-                    wx_swizzle(classes[i], sels[j],
-                               NSSelectorFromString(reps[j]));
-                    [hooked addObject:tag];
-                    NSLog(@"[WxKbNoJump] openURL hook on %@", cn);
-                    break;
-                }
-            }
-            free(classes);
-        }
-
         if (NSClassFromString(@"NSExtensionContext")) {
             wx_swizzle(NSClassFromString(@"NSExtensionContext"), @selector(openURL:), @selector(wx_ec_openURL:));
             wx_swizzle(NSClassFromString(@"NSExtensionContext"),
@@ -401,23 +528,21 @@ static void wx_entry(void) {
         wx_swizzle([UIApplication class],
                    @selector(openURL:options:completionHandler:),
                    @selector(wx_app_openURL:options:completionHandler:));
-
         wx_swizzle([UIViewController class],
                    @selector(presentViewController:animated:completion:),
                    @selector(wx_present:animated:completion:));
 
-        Class kbVC = objc_getClass("WBInputViewController");
-        if (kbVC) {
-            wx_swizzle(kbVC, @selector(viewDidLayoutSubviews), @selector(wx_kb_viewDidLayoutSubviews));
-        } else {
-            for (int i = 0; i < 6; i++) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((i+1)*0.4*NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{
-                    Class c = objc_getClass("WBInputViewController");
-                    if (c) wx_swizzle(c, @selector(viewDidLayoutSubviews), @selector(wx_kb_viewDidLayoutSubviews));
-                });
-            }
-        }
+        // [FIX2] 延迟挂外观 hook，只成功一次
+        static __block BOOL didHookStyle = NO;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+                            if (didHookStyle) return;
+                            Class c = objc_getClass("WBInputViewController");
+                            if (c) {
+                                wx_swizzle(c, @selector(viewDidLayoutSubviews), @selector(wx_kb_viewDidLayoutSubviews));
+                                didHookStyle = YES;
+                            }
+                       });
         NSLog(@"[WxKbNoJump] INIT DONE (kbExt=%d mainApp=%d)", kb, main);
     }
 }

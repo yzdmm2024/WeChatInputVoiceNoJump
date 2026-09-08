@@ -1,15 +1,7 @@
-# 二进制 / 构建产物（非源码）
-*.ipa
-*.deb
-*.dylib
-*.o
-*.gen.m
-build/
-构建中间/
-obj/
-out/
-packages/
-.theos/
-# 系统/编辑器临时文件
 .DS_Store
-*.swp
+theos/
+packages/
+obj/
+build/
+*.deb
+.DS_Store

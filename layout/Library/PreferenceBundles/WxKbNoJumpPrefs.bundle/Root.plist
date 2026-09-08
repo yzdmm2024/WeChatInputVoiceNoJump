@@ -7,8 +7,10 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>开启后，微信键盘的语音按钮直接在键盘内激活，不再跳回主 App。</string>
 			<key>label</key>
-			<string>免跳转</string>
+			<string>语音免跳转</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -20,13 +22,13 @@
 			<key>key</key>
 			<string>wxkbdNoJumpEnabled</string>
 			<key>label</key>
-			<string>开启语音免跳转</string>
+			<string>免跳转</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>圆角=按键圆角；缩放=整体大小；不透明度=键盘透明；红/绿/蓝=背景颜色</string>
+			<string>修改后返回键盘界面立即生效。顶部为实时预览。</string>
 			<key>label</key>
 			<string>键盘外观定制</string>
 		</dict>
@@ -52,47 +54,11 @@
 			<key>key</key>
 			<string>wxkbdCornerRadius</string>
 			<key>label</key>
-			<string>圆角大小</string>
+			<string>圆角</string>
 			<key>max</key>
-			<real>40.0</real>
+			<integer>40</integer>
 			<key>min</key>
-			<real>0.0</real>
-			<key>showValue</key>
-			<true/>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>default</key>
-			<real>1.0</real>
-			<key>defaults</key>
-			<string>com.wxkbd.nojump</string>
-			<key>key</key>
-			<string>wxkbdScale</string>
-			<key>label</key>
-			<string>整体缩放(大小)</string>
-			<key>max</key>
-			<real>1.4</real>
-			<key>min</key>
-			<real>0.6</real>
-			<key>showValue</key>
-			<true/>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>default</key>
-			<real>1.0</real>
-			<key>defaults</key>
-			<string>com.wxkbd.nojump</string>
-			<key>key</key>
-			<string>wxkbdBgAlpha</string>
-			<key>label</key>
-			<string>不透明度</string>
-			<key>max</key>
-			<real>1.0</real>
-			<key>min</key>
-			<real>0.2</real>
+			<integer>0</integer>
 			<key>showValue</key>
 			<true/>
 		</dict>
@@ -106,11 +72,11 @@
 			<key>key</key>
 			<string>wxkbdBgR</string>
 			<key>label</key>
-			<string>背景红(R)</string>
+			<string>红</string>
 			<key>max</key>
 			<real>1.0</real>
 			<key>min</key>
-			<real>0.0</real>
+			<integer>0</integer>
 			<key>showValue</key>
 			<true/>
 		</dict>
@@ -124,11 +90,11 @@
 			<key>key</key>
 			<string>wxkbdBgG</string>
 			<key>label</key>
-			<string>背景绿(G)</string>
+			<string>绿</string>
 			<key>max</key>
 			<real>1.0</real>
 			<key>min</key>
-			<real>0.0</real>
+			<integer>0</integer>
 			<key>showValue</key>
 			<true/>
 		</dict>
@@ -142,38 +108,34 @@
 			<key>key</key>
 			<string>wxkbdBgB</string>
 			<key>label</key>
-			<string>背景蓝(B)</string>
+			<string>蓝</string>
 			<key>max</key>
 			<real>1.0</real>
 			<key>min</key>
-			<real>0.0</real>
+			<integer>0</integer>
 			<key>showValue</key>
 			<true/>
 		</dict>
 		<dict>
 			<key>cell</key>
-			<string>PSGroupCell</string>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<real>1.0</real>
+			<key>defaults</key>
+			<string>com.wxkbd.nojump</string>
+			<key>key</key>
+			<string>wxkbdBgAlpha</string>
 			<key>label</key>
-			<string>操作</string>
-		</dict>
-		<dict>
-			<key>action</key>
-			<string>respring</string>
-			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>label</key>
-			<string>注销 SpringBoard</string>
-		</dict>
-		<dict>
-			<key>action</key>
-			<string>resetDefaults</string>
-			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>label</key>
-			<string>恢复默认设置</string>
+			<string>背景不透明度</string>
+			<key>max</key>
+			<real>1.0</real>
+			<key>min</key>
+			<real>0.2</real>
+			<key>showValue</key>
+			<true/>
 		</dict>
 	</array>
 	<key>title</key>
-	<string>微信键盘免跳转 1.1.7</string>
+	<string>微信键盘免跳转 1.1.8</string>
 </dict>
 </plist>

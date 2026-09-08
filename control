@@ -1,9 +1,9 @@
 Package: com.wxkbd.nojump
-Name: 微信键盘免跳转
-Version: 1.1.7
+Name: WeType NoJump (微信键盘免跳转)
+Depends: mobilesubstrate (>= 0.9.5000), preferenceloader (>= 2.2.2)
+Version: 1.1.8
 Architecture: iphoneos-arm64
-Maintainer: yzdmm
-Author: yzdmm
+Description: 微信输入法语音全局免跳转 + 键盘外观定制（圆角/缩放/颜色/透明度）
+Maintainer: WxKbNoJump
+Author: WxKbNoJump
 Section: Tweaks
-Description: 微信输入法语音免跳转 + 键盘外观定制（圆角/大小/颜色/透明度）。rootless (Relaxin/ElleKit) deb，由 GitHub Actions 用 Theos 构建。
-Depends: preferenceloader, firmware (>= 15.0)
