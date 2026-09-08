@@ -104,6 +104,72 @@ static void wx_applyStyle(UIView *root) {
     root.transform = CGAffineTransformMakeScale(sc, sc);
 }
 
+#pragma mark - 在键盘扩展里直接激活内建语音输入（第三方 app 免跳转核心）
+
+static UIView *wx_findFirstResponder(UIView *v) {
+    if (!v) return nil;
+    if ([v isFirstResponder]) return v;
+    for (UIView *sub in v.subviews) {
+        UIView *r = wx_findFirstResponder(sub);
+        if (r) return r;
+    }
+    return nil;
+}
+
+static void wx_tryActivateVoiceInKeyboard(UIInputViewController *ivc) {
+    // 1) 找到当前键盘的 inputViewController
+    if (!ivc) {
+        // 兜底：从 first responder 链向上找（扩展中 UIApplication.sharedApplication 常为 nil）
+        UIApplication *app = [UIApplication sharedApplication];
+        UIResponder *first = nil;
+        if (app && app.keyWindow && app.keyWindow.rootViewController) {
+            first = wx_findFirstResponder(app.keyWindow.rootViewController.view);
+        }
+        if (!first && app) {
+            for (UIWindow *w in app.windows) {
+                first = wx_findFirstResponder(w);
+                if (first) break;
+            }
+        }
+        UIResponder *r = first;
+        while (r) {
+            if ([r isKindOfClass:[UIInputViewController class]]) { ivc = (UIInputViewController *)r; break; }
+            r = [r nextResponder];
+        }
+    }
+    if (!ivc) {
+        NSLog(@"[WxKbNoJump] activateVoice: no UIInputViewController");
+        return;
+    }
+
+    // 2) 从 inputViewController.view 里找 WBRootInputView
+    Class rvCls = NSClassFromString(@"WBRootInputView");
+    UIView *target = ivc.view;
+    if (rvCls) {
+        for (UIView *sub in ivc.view.subviews) {
+            if ([sub isKindOfClass:rvCls]) { target = sub; break; }
+        }
+    }
+    if (!target) {
+        NSLog(@"[WxKbNoJump] activateVoice: no WBRootInputView");
+        return;
+    }
+
+    // 3) 激活语音输入视图
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    SEL initSel = @selector(initVoiceInputInteractionViewIfNeeded);
+    SEL actSel  = @selector(setVoiceInputInteractionViewActive:);
+    if ([target respondsToSelector:initSel]) {
+        [target performSelector:initSel];
+        NSLog(@"[WxKbNoJump] activated voice view on %@", target);
+    }
+    if ([target respondsToSelector:actSel]) {
+        [target performSelector:actSel withObject:@YES];
+    }
+    #pragma clang diagnostic pop
+}
+
 #pragma mark - Swizzle 辅助
 
 static void wx_swizzle(Class cls, SEL orig, SEL repl) {
@@ -173,11 +239,20 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 @end
 @implementation UIInputViewController (WxKbNoJump)
 - (BOOL)wx_ii_openURL:(NSURL *)url {
-    if (wx_blockURL(url)) return NO;
+    if (wx_blockURL(url)) {
+        NSLog(@"[WxKbNoJump] UIInputViewController openURL blocked: %@", url);
+        wx_tryActivateVoiceInKeyboard(self);
+        return NO;
+    }
     return [self wx_ii_openURL:url];
 }
 - (void)wx_ii_openURL:(NSURL *)url options:(NSDictionary *)opts completionHandler:(void(^)(BOOL))h {
-    if (wx_blockURL(url)) { if (h) h(NO); return; }
+    if (wx_blockURL(url)) {
+        NSLog(@"[WxKbNoJump] UIInputViewController openURL(blocked) options: %@", url);
+        wx_tryActivateVoiceInKeyboard(self);
+        if (h) h(NO);
+        return;
+    }
     [self wx_ii_openURL:url options:opts completionHandler:h];
 }
 @end
@@ -190,11 +265,20 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 @end
 @implementation NSExtensionContext (WxKbNoJump)
 - (BOOL)wx_ec_openURL:(NSURL *)url {
-    if (wx_blockURL(url)) return NO;
+    if (wx_blockURL(url)) {
+        NSLog(@"[WxKbNoJump] NSExtensionContext openURL blocked: %@", url);
+        wx_tryActivateVoiceInKeyboard(nil);
+        return NO;
+    }
     return [self wx_ec_openURL:url];
 }
 - (void)wx_ec_openURL:(NSURL *)url completionHandler:(void(^)(BOOL))h {
-    if (wx_blockURL(url)) { if (h) h(NO); return; }
+    if (wx_blockURL(url)) {
+        NSLog(@"[WxKbNoJump] NSExtensionContext openURL(blocked) completion: %@", url);
+        wx_tryActivateVoiceInKeyboard(nil);
+        if (h) h(NO);
+        return;
+    }
     [self wx_ec_openURL:url completionHandler:h];
 }
 @end
@@ -219,10 +303,17 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 @implementation UIViewController (WxKbNoJump)
 - (void)wx_present:(UIViewController *)vc animated:(BOOL)flag completion:(void(^)(void))completion {
     const char *cn = class_getName([vc class]);
-    if (cn && (strstr(cn, "Voice") || strstr(cn, "voice") ||
-               strstr(cn, "Speech") || strstr(cn, "speech") ||
-               strstr(cn, "Microphone") || strstr(cn, "microphone") ||
-               strstr(cn, "Permission") || strstr(cn, "permission"))) {
+    // 微信键盘自己的 VC（WB*/WZ*）放行，不要误拦内部语音界面
+    if (cn && (strncmp(cn, "WB", 2) == 0 || strncmp(cn, "WZ", 2) == 0)) {
+        [self wx_present:vc animated:flag completion:completion];
+        return;
+    }
+    // 只拦明显的权限/设置/授权类弹窗，避免跳到系统设置或反复要麦克风权限
+    if (cn && (strstr(cn, "Permission") || strstr(cn, "permission") ||
+               strstr(cn, "Setting")   || strstr(cn, "setting") ||
+               strstr(cn, "Auth")      || strstr(cn, "auth") ||
+               strstr(cn, "Privacy")   || strstr(cn, "privacy"))) {
+        NSLog(@"[WxKbNoJump] blocked presented VC: %s", cn);
         return;
     }
     [self wx_present:vc animated:flag completion:completion];

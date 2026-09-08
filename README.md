@@ -37,12 +37,21 @@
   若在 `-specifiers` 里用 `objc_get/setAssociatedObject` 存数组，框架读到的 `_specifiers` 永远是 nil → 标题在、内容全空。
   → 改用 `class_getInstanceVariable` + `object_get/setIvar` 直接读写真实的 `_specifiers` ivar（按名字取，无需私有头）
 
+- **坑G（第三方 App 仍有 1 秒跳转/黑屏）**：微信里生效是因为 NSUserDefaults hook 让微信主 app 走内建语音；
+  在备忘录/短信等第三方 App，微信键盘可能直接调 `openURL:` 想拉起主 app。只拦截 URL 会被内部等待动画卡住 1 秒黑屏。
+  → 拦截 `openURL:` 后，立刻调用 `WBRootInputView` 的 `initVoiceInputInteractionViewIfNeeded` + `setVoiceInputInteractionViewActive:`，
+    让键盘内部语音输入直接出现，绕过跳转。
+
+- **坑H（面板滑块没文字/看不到效果）**：`PSSliderCell` 默认不显示当前数值，且纯文字列表看不出调了什么。
+  → 重写 `tableView:cellForRowAtIndexPath:` 给每个滑块左侧强制显示中文名、右侧显示当前值；
+    在面板顶部加一个 `WxKbKeyboardPreviewView` 绘制简化 QWERTY 键盘，滑动时实时刷新预览。
+
 ## 本地构建
 
 ```bash
 export THEOS=/path/to/theos
 make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-# 产物： packages/com.wxkbd.nojump_1.1.3_iphoneos-arm64.deb
+# 产物： packages/com.wxkbd.nojump_1.1.4_iphoneos-arm64.deb
 ```
 
 ## CI 构建（推荐）

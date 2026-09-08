@@ -30,6 +30,8 @@
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>键盘外观定制</string>
+			<key>footerText</key>
+			<string>圆角=按键圆角；缩放=整体大小；不透明度=键盘透明；红/绿/蓝=背景颜色</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -147,7 +149,7 @@
 			<key>max</key>
 			<real>1</real>
 			<key>default</key>
-			<string>0.20</string>
+			<real>0.20</real>
 			<key>showValue</key>
 			<true/>
 		</dict>
