@@ -1,0 +1,43 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Theos
+        uses: actions/cache@v4
+        id: theos-cache
+        with:
+          path: /tmp/theos
+          key: theos-build
+
+      - name: Install Theos
+        if: steps.theos-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo mkdir -p /tmp/theos
+          sudo chown $(whoami) /tmp/theos
+          git clone --recursive https://github.com/theos/theos.git /tmp/theos
+          curl -LO https://github.com/theos/sdks/releases/latest/download/iPhoneOS16.0.sdk.tar.xz
+          tar -xzf iPhoneOS16.0.sdk.tar.xz -C /tmp/theos/sdks
+          rm iPhoneOS16.0.sdk.tar.xz
+
+      - name: Build
+        run: |
+          export THEOS=/tmp/theos
+          make clean package
+        env:
+          THEOS: /tmp/theos
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: wechat-voice-no-jump
+          path: packages/*.deb

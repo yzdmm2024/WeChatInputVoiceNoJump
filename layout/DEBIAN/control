@@ -1,0 +1,9 @@
+Package: com.yzdmm.wechatvoicenojump
+Name: 微信输入法自用
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: 微信输入法语音免跳转 - 点击语音按钮直接开始录音，不跳转设置页
+Maintainer: yzdmm2024
+Author: yzdmm2024
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 14.0)
