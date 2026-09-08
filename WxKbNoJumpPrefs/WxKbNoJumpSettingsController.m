@@ -9,7 +9,7 @@
 
 #pragma mark - 前向声明（不依赖 Preferences 私有头）
 
-@interface PSListController : UIViewController
+@interface PSListController : UITableViewController
 - (NSArray *)loadSpecifiersFromPlistName:(NSString *)name target:(id)target;
 - (id)specifierAtIndexPath:(NSIndexPath *)indexPath;
 @end
@@ -54,36 +54,39 @@
 
     // 整体背景（应用用户设置：颜色 + 透明度 + 缩放 + 圆角）
     UIColor *bg = self.kbBackgroundColor ?: [UIColor colorWithWhite:0.9 alpha:1.0];
-    CGFloat alpha = self.styleEnabled ? MAX(0.2, MIN(1.0, self.bgAlpha)) : 0.25;
+    CGFloat alpha = self.styleEnabled ? MAX(0.2f, MIN(1.0f, self.bgAlpha)) : 0.25f;
     CGRect boardRect = CGRectInset(rect, 8, 8);
     CGFloat cr = self.styleEnabled ? MAX(0, MIN(40, self.keyCornerRadius)) : 6.0;
 
     UIBezierPath *boardPath = [UIBezierPath bezierPathWithRoundedRect:boardRect cornerRadius:cr];
-    [bg colorWithAlphaComponent:alpha].setFill;
+    UIColor *bgWithAlpha = [bg colorWithAlphaComponent:alpha];
+    [bgWithAlpha setFill];
     [boardPath fill];
 
     // 缩放以中心为基准
-    CGFloat sc = self.styleEnabled ? MAX(0.6, MIN(1.4, self.keyboardScale)) : 1.0;
+    CGFloat sc = self.styleEnabled ? MAX(0.6f, MIN(1.4f, self.keyboardScale)) : 1.0f;
     CGContextSaveGState(ctx);
     CGContextTranslateCTM(ctx, W / 2.0, H / 2.0);
     CGContextScaleCTM(ctx, sc, sc);
     CGContextTranslateCTM(ctx, -W / 2.0, -H / 2.0);
 
-    // 文字颜色
-    UIColor *textColor = [UIColor darkTextColor];
+    // 文字颜色（用 blackColor 兼容性最好）
+    UIColor *textColor = [UIColor blackColor];
     UIFont *font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
 
     // 绘制一个简化 QWERTY 键盘
     // 工具栏
     CGFloat toolY = boardRect.origin.y + 10;
-    CGFloat toolCount = 6;
-    CGFloat toolW = 28, toolGap = (boardRect.size.width - toolCount * toolW) / (toolCount + 1);
+    NSUInteger toolCount = 6;
+    CGFloat toolW = 28;
+    CGFloat toolGap = (boardRect.size.width - toolCount * toolW) / (toolCount + 1);
     NSArray *toolIcons = @[@"P", @"😀", @"🎤", @"📎", @"中/A", @"⌄"];
     for (NSUInteger i = 0; i < toolCount; i++) {
         CGRect f = CGRectMake(boardRect.origin.x + toolGap + i * (toolW + toolGap),
                               toolY, toolW, toolW);
         UIBezierPath *p = [UIBezierPath bezierPathWithRoundedRect:f cornerRadius:f.size.width/2.0];
-        [[UIColor whiteColor] colorWithAlphaComponent:0.9].setFill;
+        UIColor *keyFill = [[UIColor whiteColor] colorWithAlphaComponent:0.9f];
+        [keyFill setFill];
         [p fill];
         [textColor set];
         NSString *icon = toolIcons[i];
@@ -107,10 +110,11 @@
     CGFloat usableW = boardRect.size.width - 20;
     CGFloat leftX = boardRect.origin.x + 10;
 
-    auto drawKey = ^(CGRect f, NSString *title, BOOL wide) {
-        UIBezierPath *p = [UIBezierPath bezierPathWithRoundedRect:f
-                                                      cornerRadius:self.styleEnabled ? cr : 5];
-        [[UIColor whiteColor] colorWithAlphaComponent:0.95].setFill;
+    void (^drawKey)(CGRect, NSString *, BOOL) = ^(CGRect f, NSString *title, BOOL wide) {
+        CGFloat keyCR = self.styleEnabled ? cr : 5.0;
+        UIBezierPath *p = [UIBezierPath bezierPathWithRoundedRect:f cornerRadius:keyCR];
+        UIColor *kf = [[UIColor whiteColor] colorWithAlphaComponent:0.95f];
+        [kf setFill];
         [p fill];
         [textColor set];
         UIFont *fnt = wide ? [UIFont systemFontOfSize:10 weight:UIFontWeightMedium] : font;
@@ -123,7 +127,6 @@
     CGFloat y = startY;
     for (NSUInteger r = 0; r < rows.count; r++) {
         NSArray *row = rows[r];
-        CGFloat keyW;
         CGFloat gap = 5;
         if (r == 3) {
             // 底行：123 / 标点 / 空格 / 中英 / 发送
@@ -135,7 +138,7 @@
                 x += w;
             }
         } else {
-            keyW = (usableW - (row.count + 1) * gap) / row.count;
+            CGFloat keyW = (usableW - (row.count + 1) * gap) / row.count;
             if (r == 2) {
                 // shift / backspace 稍宽
                 keyW = (usableW - (row.count - 1) * gap - 8) / (row.count - 1);
@@ -161,7 +164,8 @@
 
     // 未启用外观时盖一层提示
     if (!self.styleEnabled) {
-        [[UIColor colorWithWhite:1.0 alpha:0.55] setFill];
+        UIColor *overlay = [UIColor colorWithWhite:1.0 alpha:0.55];
+        [overlay setFill];
         CGContextFillRect(ctx, rect);
         NSString *hint = @"外观定制未启用";
         UIFont *hf = [UIFont boldSystemFontOfSize:16];
@@ -193,7 +197,7 @@ static NSDictionary *wx_prefs(void) {
     return [NSDictionary dictionaryWithContentsOfFile:wx_prefPath()] ?: @{};
 }
 
-static CGFloat wx_float(NSString *k, CGFloat def) {
+static CGFloat wx_floatPref(NSString *k, CGFloat def) {
     id v = wx_prefs()[k];
     if ([v respondsToSelector:@selector(floatValue)]) return [v floatValue];
     if ([v respondsToSelector:@selector(doubleValue)]) return [v doubleValue];
@@ -238,17 +242,15 @@ static BOOL wx_boolPref(NSString *k, BOOL def) {
 }
 
 - (void)refreshPreviewAndLabels {
-    NSDictionary *p = wx_prefs();
-
     BOOL styleOn = wx_boolPref(@"wxkbdStyleEnabled", NO);
     self.previewView.styleEnabled = styleOn;
     if (styleOn) {
-        self.previewView.keyCornerRadius = wx_float(@"wxkbdCornerRadius", 10.0);
-        self.previewView.keyboardScale     = wx_float(@"wxkbdScale", 1.0);
-        self.previewView.bgAlpha           = wx_float(@"wxkbdBgAlpha", 1.0);
-        CGFloat r = wx_float(@"wxkbdBgR", 0.92);
-        CGFloat g = wx_float(@"wxkbdBgG", 0.93);
-        CGFloat b = wx_float(@"wxkbdBgB", 0.94);
+        self.previewView.keyCornerRadius = wx_floatPref(@"wxkbdCornerRadius", 10.0);
+        self.previewView.keyboardScale     = wx_floatPref(@"wxkbdScale", 1.0);
+        self.previewView.bgAlpha           = wx_floatPref(@"wxkbdBgAlpha", 1.0);
+        CGFloat r = wx_floatPref(@"wxkbdBgR", 0.92);
+        CGFloat g = wx_floatPref(@"wxkbdBgG", 0.93);
+        CGFloat b = wx_floatPref(@"wxkbdBgB", 0.94);
         self.previewView.kbBackgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:1.0];
     } else {
         self.previewView.keyCornerRadius = 6.0;
@@ -265,13 +267,13 @@ static BOOL wx_boolPref(NSString *k, BOOL def) {
         UILabel *lab = self.valueLabels[key];
         if (!lab) continue;
         if ([key isEqualToString:@"wxkbdCornerRadius"]) {
-            lab.text = [NSString stringWithFormat:@"%.1f", wx_float(key, 10.0)];
+            lab.text = [NSString stringWithFormat:@"%.1f", wx_floatPref(key, 10.0)];
         } else if ([key isEqualToString:@"wxkbdScale"]) {
-            lab.text = [NSString stringWithFormat:@"%.2f", wx_float(key, 1.0)];
+            lab.text = [NSString stringWithFormat:@"%.2f", wx_floatPref(key, 1.0)];
         } else if ([key isEqualToString:@"wxkbdBgAlpha"]) {
-            lab.text = [NSString stringWithFormat:@"%.2f", wx_float(key, 1.0)];
+            lab.text = [NSString stringWithFormat:@"%.2f", wx_floatPref(key, 1.0)];
         } else if ([key hasPrefix:@"wxkbdBg"]) {
-            lab.text = [NSString stringWithFormat:@"%.2f", wx_float(key, 0.0)];
+            lab.text = [NSString stringWithFormat:@"%.2f", wx_floatPref(key, 0.0)];
         }
     }
 }
