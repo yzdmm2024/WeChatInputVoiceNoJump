@@ -17,6 +17,7 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
 #pragma mark - 键盘外观预览视图
 
@@ -125,7 +126,7 @@
 - (void)refreshPreviewFromSpecifiers {
     NSArray *specs = [self specifiers];
     for (PSSpecifier *s in specs) {
-        NSString *key = s.propertyForKey:@"key"];
+        NSString *key = [s propertyForKey:@"key"];
         if ([key isEqualToString:@"wxkbdCornerRadius"]) {
             id v = [specs valueForKeyPath:@"wxkbdCornerRadius"];
             _preview.radius = [v respondsToSelector:@selector(floatValue)] ? [v floatValue] : 10;
@@ -156,7 +157,7 @@
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
     [super setPreferenceValue:value specifier:specifier];
     // 用户在面板里改动滑块 → 实时刷新预览
-    NSString *key = specifier.propertyForKey:@"key";
+    NSString *key = [specifier propertyForKey:@"key"];
     CGFloat f = [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : 0;
     if ([key isEqualToString:@"wxkbdCornerRadius"]) _preview.radius = f;
     else if ([key isEqualToString:@"wxkbdBgR"])    _preview.red = f;
