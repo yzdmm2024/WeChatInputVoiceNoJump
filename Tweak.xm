@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <objc/message.h>
 
 // ============================================================
 // 微信输入法自用 - 语音免跳转
@@ -11,7 +12,7 @@
 
 - (void)handleItemClickEvent:(id)event func:(int)func controlEvent:(UIControlEvents)ctrl {
     if (func == 0x1) {
-        [self setVoiceInputFocused:YES animated:NO completion:nil];
+        ((void (*)(id, SEL, BOOL, BOOL, id))objc_msgSend)(self, @selector(setVoiceInputFocused:animated:completion:), YES, NO, nil);
         return;
     }
     %orig;
