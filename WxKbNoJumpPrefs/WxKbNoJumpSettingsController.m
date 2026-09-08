@@ -9,9 +9,13 @@
 
 #pragma mark - 前向声明（不依赖 Preferences 私有头）
 
-@interface PSListController : UITableViewController
+// 注意: PSListController 继承自 PSViewController→UIViewController，不是 UITableViewController！
+// 实测 (iOS 16.6, frida): instancesRespondToSelector:@selector(tableView) == NO，
+// 表视图访问器是 -table。误用 self.tableView 会 doesNotRecognizeSelector → 设置闪退。
+@interface PSListController : UIViewController
 - (NSArray *)loadSpecifiersFromPlistName:(NSString *)name target:(id)target;
 - (id)specifierAtIndexPath:(NSIndexPath *)indexPath;
+- (UITableView *)table;
 @end
 
 @interface PSSpecifier : NSObject
@@ -231,7 +235,10 @@ static BOOL wx_boolPref(NSString *k, BOOL def) {
     CGFloat previewH = 220;
     self.previewView = [[WxKbKeyboardPreviewView alloc] initWithFrame:CGRectMake(0, 0, W, previewH)];
     self.previewView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    self.tableView.tableHeaderView = self.previewView;
+    // PSListController 没有 -tableView，表视图要用 -table 拿；防御式判断避免再闪退
+    UITableView *tv = [self respondsToSelector:@selector(table)] ? [self table] : nil;
+    if (!tv && [self respondsToSelector:@selector(tableView)]) tv = [(id)self tableView];
+    if (tv) tv.tableHeaderView = self.previewView;
 
     [self refreshPreviewAndLabels];
 }
