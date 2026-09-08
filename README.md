@@ -29,12 +29,16 @@
   布局文件**不能**再写 `layout/var/jb/...`，否则会变成 `/var/jb/var/jb/...`，PreferenceLoader 入口找不到、设置项不显示。
   → 布局用 `layout/Library/PreferenceLoader/Preferences/WxKbNoJump.plist`（不带 var/jb）
 
+- **坑E2（面板空白：bundle 资源缺失）**：rootless 下 Theos 的 `XXX_RESOURCES` 不会把 `Root.plist`/`Info.plist` 打进 `.bundle`，
+  导致 `PSListController` 加载不到 specifiers → 设置里**只有标题、下面全空白**。
+  → 改用 `layout/Library/PreferenceBundles/WxKbNoJumpPrefs.bundle/` 直接把 `Root.plist`+`Info.plist` 打进 bundle（已验证有效）
+
 ## 本地构建
 
 ```bash
 export THEOS=/path/to/theos
 make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-# 产物： packages/com.wxkbd.nojump_1.1.1_iphoneos-arm64.deb
+# 产物： packages/com.wxkbd.nojump_1.1.2_iphoneos-arm64.deb
 ```
 
 ## CI 构建（推荐）

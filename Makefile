@@ -19,7 +19,8 @@ include $(THEOS_MAKE_PATH)/tweak.mk
 # ===== 设置面板 PreferenceBundle =====
 BUNDLE_NAME = WxKbNoJumpPrefs
 WxKbNoJumpPrefs_FILES = WxKbNoJumpPrefs/WxKbNoJumpSettingsController.m
-WxKbNoJumpPrefs_RESOURCES = WxKbNoJumpPrefs/Info.plist WxKbNoJumpPrefs/Root.plist
+WxKbNoJumpPrefs_INFOPLIST_FILE = WxKbNoJumpPrefs/Info.plist
+# 注: Root.plist/Info.plist 通过 layout/ 直接打进 bundle（RESOURCES 在 rootless 下未生效，会导致面板空白）
 WxKbNoJumpPrefs_INSTALL_PATH = /Library/PreferenceBundles
 WxKbNoJumpPrefs_FRAMEWORKS = UIKit Foundation Preferences
 WxKbNoJumpPrefs_PRIVATE_FRAMEWORKS = PreferencesUI
