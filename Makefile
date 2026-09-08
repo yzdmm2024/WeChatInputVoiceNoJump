@@ -10,7 +10,7 @@ include $(THEOS)/makefiles/common.mk
 # ===== Tweak: 语音免跳转 + 键盘外观定制 =====
 TWEAK_NAME = WxKbNoJump
 WxKbNoJump_FILES = Tweak.xm
-WxKbNoJump_CFLAGS = -fobjc-arc
+WxKbNoJump_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 WxKbNoJump_FRAMEWORKS = UIKit Foundation
 WxKbNoJump_INSTALL_PATH = /Library/TweakInject
 
@@ -24,7 +24,7 @@ WxKbNoJumpPrefs_INFOPLIST_FILE = WxKbNoJumpPrefs/Info.plist
 WxKbNoJumpPrefs_INSTALL_PATH = /Library/PreferenceBundles
 WxKbNoJumpPrefs_FRAMEWORKS = UIKit Foundation Preferences
 WxKbNoJumpPrefs_PRIVATE_FRAMEWORKS = PreferencesUI
-WxKbNoJumpPrefs_CFLAGS = -fobjc-arc
+WxKbNoJumpPrefs_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 WxKbNoJumpPrefs_LDFLAGS = -Wl,-undefined,dynamic_lookup
 
 include $(THEOS_MAKE_PATH)/bundle.mk
