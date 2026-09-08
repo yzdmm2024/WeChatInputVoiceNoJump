@@ -19,6 +19,9 @@ jobs:
           path: /tmp/theos
           key: theos-build
 
+      - name: Install ldid
+        run: brew install ldid 2>/dev/null || true
+
       - name: Install Theos
         if: steps.theos-cache.outputs.cache-hit != 'true'
         run: |
