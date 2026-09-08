@@ -4,7 +4,8 @@
 //  目标进程（见 WxKbNoJump.plist Filter）：
 //    com.tencent.wetype.keyboard  —— 键盘扩展（全局跑的进程，语音按钮与键盘 UI 都在这里）
 //    com.tencent.wetype           —— 主 app（设置/管理壳）
-//    com.apple.Preferences        —— 系统设置（加载本 tweak / PreferenceBundle）
+//  ⚠️ 绝不注入 com.apple.Preferences：设置进程注入 tweak 后点面板入口会被看门狗
+//     重启（0x8badf00d）。设置面板由 PreferenceLoader 加载 Prefs bundle，与 Filter 无关。
 //
 //  免跳转三层保险：
 //   1) NSUserDefaults hook：对微信自带键 WBAppSettingsBool_VoiceInput_WcVoiceNoJump

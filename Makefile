@@ -3,7 +3,9 @@
 # CI: GitHub Actions 自动构建 (见 .github/workflows/build.yml)
 
 TARGET := iphone:clang:16.5
-ARCHS = arm64e
+# ARCHS: arm64e 设备的「设置」进程跑 arm64e（面板需要 arm64e 切片），
+#        而被注入的键盘扩展/主 app 是 arm64 进程（tweak 需要 arm64 切片）——缺一不可
+ARCHS = arm64 arm64e
 
 include $(THEOS)/makefiles/common.mk
 

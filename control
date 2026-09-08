@@ -1,6 +1,6 @@
 Package: com.wxkbd.nojump
 Name: 微信键盘免跳转
-Version: 1.1.5
+Version: 1.1.6
 Architecture: iphoneos-arm64
 Maintainer: yzdmm
 Author: yzdmm
