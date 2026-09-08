@@ -182,41 +182,51 @@
 }
 
 @end
+#pragma mark - 设置控制器（CFPreferences 版）
 
-#pragma mark - 设置控制器
+// PSListController 前向声明（iOS16 继承链: PSListController→PSViewController→UIViewController）
+@interface PSListController : UIViewController
+- (NSArray *)loadSpecifiersFromPlistName:(NSString *)name target:(id)target;
+- (id)specifierAtIndexPath:(NSIndexPath *)indexPath;
+- (UITableView *)table;
+@end
+
+@interface PSSpecifier : NSObject
+- (id)propertyForKey:(NSString *)key;
+- (void)setProperty:(id)value forKey:(NSString *)key;
+- (NSString *)identifier;
+- (NSString *)name;
+@end
+
+static NSString *const kWxSuite = @"com.wxkbd.nojump";
+
+static id wx_cp(NSString *key) {
+    CFTypeRef v = CFPreferencesCopyAppValue((__bridge CFStringRef)key, (__bridge CFStringRef)kWxSuite);
+    return v ? CFBridgingRelease(v) : nil;
+}
+static CGFloat wx_floatPref(NSString *key, CGFloat def) {
+    id v = wx_cp(key);
+    return ([v respondsToSelector:@selector(floatValue)]) ? [v floatValue] : def;
+}
+static BOOL wx_boolPref(NSString *key, BOOL def) {
+    id v = wx_cp(key);
+    return ([v respondsToSelector:@selector(boolValue)]) ? [v boolValue] : def;
+}
+static void wx_delPref(NSString *key) {
+    CFPreferencesSetValue((__bridge CFStringRef)key, NULL,
+                          (__bridge CFStringRef)kWxSuite,
+                          kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+}
 
 @interface WxKbNoJumpSettingsController : PSListController
 @property (nonatomic, strong) WxKbKeyboardPreviewView *previewView;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, UILabel *> *valueLabels;
 - (void)respring;
 - (void)resetDefaults;
 @end
 
 @implementation WxKbNoJumpSettingsController
 
-static NSString *wx_prefPath(void) {
-    return @"/var/mobile/Library/Preferences/com.wxkbd.nojump.plist";
-}
-
-static NSDictionary *wx_prefs(void) {
-    return [NSDictionary dictionaryWithContentsOfFile:wx_prefPath()] ?: @{};
-}
-
-static CGFloat wx_floatPref(NSString *k, CGFloat def) {
-    id v = wx_prefs()[k];
-    if ([v respondsToSelector:@selector(floatValue)]) return [v floatValue];
-    if ([v respondsToSelector:@selector(doubleValue)]) return [v doubleValue];
-    return def;
-}
-
-static BOOL wx_boolPref(NSString *k, BOOL def) {
-    id v = wx_prefs()[k];
-    if ([v respondsToSelector:@selector(boolValue)]) return [v boolValue];
-    return def;
-}
-
-// 关键修复：PSListController 内部通过自己的 _specifiers 实例变量读取列表。
-// 用关联对象会导致框架读到的 _specifiers 为 nil → 面板空白。
+// 关键：PSListController 内部通过 _specifiers 实例变量读取列表
 - (NSArray *)specifiers {
     Ivar iv = class_getInstanceVariable(object_getClass(self), "_specifiers");
     NSArray *s = iv ? (NSArray *)object_getIvar(self, iv) : nil;
@@ -230,151 +240,55 @@ static BOOL wx_boolPref(NSString *k, BOOL def) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"微信键盘免跳转";
-    self.valueLabels = [NSMutableDictionary dictionary];
+    CFPreferencesAppSynchronize((__bridge CFStringRef)kWxSuite);
 
     CGFloat W = self.view.bounds.size.width > 0 ? self.view.bounds.size.width : 320;
-    CGFloat previewH = 220;
-    self.previewView = [[WxKbKeyboardPreviewView alloc] initWithFrame:CGRectMake(0, 0, W, previewH)];
+    self.previewView = [[WxKbKeyboardPreviewView alloc] initWithFrame:CGRectMake(0, 0, W, 220)];
     self.previewView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    // PSListController 没有 -tableView，表视图要用 -table 拿；防御式判断避免再闪退
     UITableView *tv = [self respondsToSelector:@selector(table)] ? [self table] : nil;
-    if (!tv && [self respondsToSelector:@selector(tableView)]) tv = [(id)self tableView];
     if (tv) tv.tableHeaderView = self.previewView;
 
-    [self refreshPreviewAndLabels];
+    [self refreshPreview];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self refreshPreviewAndLabels];
+    CFPreferencesAppSynchronize((__bridge CFStringRef)kWxSuite);
+    [self refreshPreview];
 }
 
-- (void)refreshPreviewAndLabels {
+// 开关/滑杆变动时 PSListController 会调这个方法写偏好 —— 调完刷新预览
+- (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
+    // 纯 runtime 工程（非 Logos），手动执行标准写回
+    NSString *key = [specifier identifier] ?: [specifier propertyForKey:@"key"];
+    NSString *defaultsID = [specifier propertyForKey:@"defaults"];
+    if (key && defaultsID) {
+        CFPreferencesSetValue((__bridge CFStringRef)key, (__bridge CFTypeRef)value,
+                              (__bridge CFStringRef)defaultsID,
+                              kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+        CFPreferencesAppSynchronize((__bridge CFStringRef)defaultsID);
+    }
+    [self refreshPreview];
+}
+
+- (void)refreshPreview {
     BOOL styleOn = wx_boolPref(@"wxkbdStyleEnabled", NO);
     self.previewView.styleEnabled = styleOn;
     if (styleOn) {
-        self.previewView.keyCornerRadius = wx_floatPref(@"wxkbdCornerRadius", 10.0);
-        self.previewView.keyboardScale     = wx_floatPref(@"wxkbdScale", 1.0);
-        self.previewView.bgAlpha           = wx_floatPref(@"wxkbdBgAlpha", 1.0);
+        self.previewView.keyCornerRadius  = wx_floatPref(@"wxkbdCornerRadius", 10.0);
+        self.previewView.keyboardScale    = wx_floatPref(@"wxkbdScale", 1.0);
+        self.previewView.bgAlpha          = wx_floatPref(@"wxkbdBgAlpha", 1.0);
         CGFloat r = wx_floatPref(@"wxkbdBgR", 0.92);
         CGFloat g = wx_floatPref(@"wxkbdBgG", 0.93);
         CGFloat b = wx_floatPref(@"wxkbdBgB", 0.94);
         self.previewView.kbBackgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:1.0];
     } else {
         self.previewView.keyCornerRadius = 6.0;
-        self.previewView.keyboardScale = 1.0;
-        self.previewView.bgAlpha = 1.0;
+        self.previewView.keyboardScale   = 1.0;
+        self.previewView.bgAlpha         = 1.0;
         self.previewView.kbBackgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
     }
     [self.previewView setNeedsDisplay];
-
-    // 刷新所有已创建的 value label
-    for (PSSpecifier *spec in [self specifiers]) {
-        NSString *key = [spec identifier];
-        if (!key) continue;
-        UILabel *lab = self.valueLabels[key];
-        if (!lab) continue;
-        if ([key isEqualToString:@"wxkbdCornerRadius"]) {
-            lab.text = [NSString stringWithFormat:@"%.1f", wx_floatPref(key, 10.0)];
-        } else if ([key isEqualToString:@"wxkbdScale"]) {
-            lab.text = [NSString stringWithFormat:@"%.2f", wx_floatPref(key, 1.0)];
-        } else if ([key isEqualToString:@"wxkbdBgAlpha"]) {
-            lab.text = [NSString stringWithFormat:@"%.2f", wx_floatPref(key, 1.0)];
-        } else if ([key hasPrefix:@"wxkbdBg"]) {
-            lab.text = [NSString stringWithFormat:@"%.2f", wx_floatPref(key, 0.0)];
-        }
-    }
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
-    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
-    if (!spec) return cell;
-
-    NSString *key = [spec identifier];
-    NSString *cellType = [spec propertyForKey:@"cell"] ?: @"";
-
-    // 给 slider cell 加上：左侧中文名 + 右侧当前数值
-    if ([cellType isEqualToString:@"PSSliderCell"]) {
-        UISlider *slider = nil;
-        for (UIView *v in cell.contentView.subviews) {
-            if ([v isKindOfClass:[UISlider class]]) { slider = (UISlider *)v; break; }
-            for (UIView *vv in v.subviews) {
-                if ([vv isKindOfClass:[UISlider class]]) { slider = (UISlider *)vv; break; }
-            }
-        }
-        if (slider && key) {
-            slider.accessibilityIdentifier = key;
-            [slider removeTarget:self action:NULL forControlEvents:UIControlEventValueChanged];
-            [slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
-
-            UILabel *valLab = self.valueLabels[key];
-            if (!valLab) {
-                valLab = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 50, 22)];
-                valLab.textAlignment = NSTextAlignmentRight;
-                valLab.font = [UIFont systemFontOfSize:13];
-                valLab.textColor = [UIColor grayColor];
-                valLab.tag = 10001;
-                self.valueLabels[key] = valLab;
-            }
-            // 放在 cell 右侧
-            CGRect cf = cell.contentView.bounds;
-            valLab.frame = CGRectMake(cf.size.width - 55, (cf.size.height - 22)/2.0, 50, 22);
-            valLab.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
-            if (valLab.superview != cell.contentView) [cell.contentView addSubview:valLab];
-
-            // 初始值
-            if ([key isEqualToString:@"wxkbdCornerRadius"])
-                valLab.text = [NSString stringWithFormat:@"%.1f", slider.value];
-            else
-                valLab.text = [NSString stringWithFormat:@"%.2f", slider.value];
-        }
-    }
-
-    // 外观开关变化时刷新预览
-    if ([cellType isEqualToString:@"PSSwitchCell"] && [key isEqualToString:@"wxkbdStyleEnabled"]) {
-        UISwitch *sw = nil;
-        for (UIView *v in cell.contentView.subviews) {
-            if ([v isKindOfClass:[UISwitch class]]) { sw = (UISwitch *)v; break; }
-        }
-        if (sw) {
-            [sw removeTarget:self action:NULL forControlEvents:UIControlEventValueChanged];
-            [sw addTarget:self action:@selector(styleSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-        }
-    }
-
-    return cell;
-}
-
-- (void)sliderChanged:(UISlider *)slider {
-    NSString *key = slider.accessibilityIdentifier;
-    if (!key) return;
-
-    // 同步数值标签
-    UILabel *lab = self.valueLabels[key];
-    if (lab) {
-        if ([key isEqualToString:@"wxkbdCornerRadius"])
-            lab.text = [NSString stringWithFormat:@"%.1f", slider.value];
-        else
-            lab.text = [NSString stringWithFormat:@"%.2f", slider.value];
-    }
-
-    // 写回 plist（PSListController 本身也会写，这里写一次确保实时预览时不出错）
-    NSString *pp = wx_prefPath();
-    NSMutableDictionary *p = [wx_prefs() mutableCopy] ?: [NSMutableDictionary dictionary];
-    p[key] = @(slider.value);
-    [p writeToFile:pp atomically:YES];
-
-    // 实时更新预览
-    [self refreshPreviewAndLabels];
-}
-
-- (void)styleSwitchChanged:(UISwitch *)sw {
-    NSString *pp = wx_prefPath();
-    NSMutableDictionary *p = [wx_prefs() mutableCopy] ?: [NSMutableDictionary dictionary];
-    p[@"wxkbdStyleEnabled"] = @(sw.on);
-    [p writeToFile:pp atomically:YES];
-    [self refreshPreviewAndLabels];
 }
 
 - (void)respring {
@@ -394,8 +308,12 @@ static BOOL wx_boolPref(NSString *k, BOOL def) {
 }
 
 - (void)resetDefaults {
-    [[NSFileManager defaultManager] removeItemAtPath:wx_prefPath() error:nil];
-    [self respring];
+    for (NSString *k in @[@"wxkbdNoJumpEnabled", @"wxkbdStyleEnabled", @"wxkbdCornerRadius",
+                          @"wxkbdScale", @"wxkbdBgAlpha", @"wxkbdBgR", @"wxkbdBgG", @"wxkbdBgB"]) {
+        wx_delPref(k);
+    }
+    CFPreferencesAppSynchronize((__bridge CFStringRef)kWxSuite);
+    [self refreshPreview];
 }
 
 @end

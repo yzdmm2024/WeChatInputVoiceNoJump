@@ -41,19 +41,23 @@ static NSString *const kBgB            = @"wxkbdBgB";
 static NSString *const kBgAlpha        = @"wxkbdBgAlpha";
 static NSString *const kScale          = @"wxkbdScale";
 
-static NSString *wx_prefPath(void) {
-    return [NSString stringWithFormat:@"/var/mobile/Library/Preferences/%@.plist", kWxSuite];
+// 偏好读取：必须走 CFPreferences（经 cfprefsd）。键盘扩展是沙盒进程，直接读
+// /var/mobile/Library/Preferences/*.plist 会被沙盒拒绝 → 永远拿到默认值，
+// 这就是「外观定制改了但键盘不生效」的根因。cfprefsd RPC 沙盒放行。
+static NSString *const kWxSuite = @"com.wxkbd.nojump";
+
+static id wx_cpValue(NSString *k) {
+    CFTypeRef v = CFPreferencesCopyAppValue((__bridge CFStringRef)k, (__bridge CFStringRef)kWxSuite);
+    return v ? CFBridgingRelease(v) : nil;
 }
 static BOOL wx_bool(NSString *k, BOOL def) {
-    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:wx_prefPath()];
-    id v = d[k];
-    if (v && [v respondsToSelector:@selector(boolValue)]) return [v boolValue];
+    id v = wx_cpValue(k);
+    if ([v respondsToSelector:@selector(boolValue)]) return [v boolValue];
     return def;
 }
 static CGFloat wx_float(NSString *k, CGFloat def) {
-    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:wx_prefPath()];
-    id v = d[k];
-    if (v && [v respondsToSelector:@selector(floatValue)]) return [v floatValue];
+    id v = wx_cpValue(k);
+    if ([v respondsToSelector:@selector(floatValue)]) return [v floatValue];
     return def;
 }
 
@@ -72,17 +76,9 @@ static BOOL wx_blockURL(NSURL *url) {
     if (!wx_bool(kNoJumpEnabled, YES)) return NO;
     if (!url) return NO;
     NSString *s = url.absoluteString.lowercaseString;
-    if ([s hasPrefix:@"wetype://"] || [s hasPrefix:@"wxkb://"] || [s hasPrefix:@"wetypetest://"]) {
-        if ([s containsString:@"voice"]  || [s containsString:@"record"]  ||
-            [s containsString:@"wtactionopen"] || [s containsString:@"asr"] ||
-            [s containsString:@"recogni"] || [s containsString:@"speech"] ||
-            [s containsString:@"dictate"] || [s containsString:@"wtaction"] ||
-            [s containsString:@"jump"]   || [s containsString:@"redirect"]) {
-            return YES;
-        }
-        return NO;
-    }
-    return NO;
+    // 免跳转模式下，扩展发出的 wetype:// / wxkb:// 一律拦掉（都是跳主 app，
+    // 语音跳转/设置页跳转都会打断输入；真要设置可在桌面直接点微信输入法图标）
+    return ([s hasPrefix:@"wetype://"] || [s hasPrefix:@"wxkb://"] || [s hasPrefix:@"wetypetest://"]);
 }
 
 #pragma mark - 外观应用
@@ -209,6 +205,8 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 @end
 @implementation NSObject (WxKbToolBar)
 - (void)wx_handleItemClickEvent:(id)event func:(int)func controlEvent:(UIControlEvents)ctrl {
+    NSLog(@"[WxKbNoJump] toolbar click func=0x%x ctrl=0x%lx self=%@",
+          func, (unsigned long)ctrl, NSStringFromClass([self class]));
     if (func == 0x1 && wx_bool(kNoJumpEnabled, YES) && NSClassFromString(@"WBFunctionToolBar")) {
         Class rvCls = NSClassFromString(@"WBRootInputView");
         if (rvCls) {
@@ -366,6 +364,35 @@ static void wx_entry(void) {
         wx_swizzle([UIInputViewController class],
                    @selector(openURL:options:completionHandler:),
                    @selector(wx_ii_openURL:options:completionHandler:));
+
+        // 关键补充：WeType 的键盘 VC 子类可能自实现 openURL:（父类没有实现 → 上面对
+        // UIInputViewController 的 swizzle 是 no-op）。枚举 WB*/WXKB*/Wt* 开头的类，
+        // 只对「方法的最初定义类」做 swizzle，避免父子链重复挂钩。
+        {
+            NSMutableSet *hooked = [NSMutableSet set];
+            unsigned int n = 0;
+            Class *classes = objc_copyClassList(&n);
+            for (unsigned int i = 0; i < n; i++) {
+                NSString *cn = NSStringFromClass(classes[i]);
+                if (![cn hasPrefix:@"WB"] && ![cn hasPrefix:@"WXKB"] && ![cn hasPrefix:@"Wt"]) continue;
+                SEL sels[2] = {@selector(openURL:), @selector(openURL:options:completionHandler:)};
+                NSString *reps[2] = {@"wx_ii_openURL:", @"wx_ii_openURL:options:completionHandler:"};
+                for (int j = 0; j < 2; j++) {
+                    if (!class_respondsToSelector(classes[i], sels[j])) continue;
+                    Class sc = class_getSuperclass(classes[i]);
+                    if (sc && class_respondsToSelector(sc, sels[j])) continue; // 祖先已定义，跳过派生类
+                    NSString *tag = [cn stringByAppendingString:reps[j]];
+                    if ([hooked containsObject:tag]) continue;
+                    wx_swizzle(classes[i], sels[j],
+                               NSSelectorFromString(reps[j]));
+                    [hooked addObject:tag];
+                    NSLog(@"[WxKbNoJump] openURL hook on %@", cn);
+                    break;
+                }
+            }
+            free(classes);
+        }
+
         if (NSClassFromString(@"NSExtensionContext")) {
             wx_swizzle(NSClassFromString(@"NSExtensionContext"), @selector(openURL:), @selector(wx_ec_openURL:));
             wx_swizzle(NSClassFromString(@"NSExtensionContext"),
