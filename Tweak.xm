@@ -2,31 +2,65 @@
 #import <objc/message.h>
 
 // ============================================================
-// 微信输入法自用 - 语音免跳转 v3
+// 微信输入法自用 - 语音免跳转 v5
 // 
 // 多层拦截策略:
-// 1. 拦截语音按钮点击 handleItemClickEvent
+// 1. 拦截语音按钮点击，直接调用WBRootInputView内建语音输入
 // 2. 拦截 setVoiceInputFocused 用 nil completion
 // 3. 拦截 presentViewController 防止设置页弹出
-// 4. 拦截 UIApplication openURL 防止外部跳转
+// 4. 拦截 UIApplication URL跳转
+// 5. 支持设置开关控制是否开启
 // ============================================================
+
+#pragma mark - Settings Check
+
+static BOOL isEnabled(void) {
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.yzdmm.wechatvoicenojump"];
+    return [defaults boolForKey:@"enabled"];
+}
 
 #pragma mark - WBFunctionToolBar
 
 %hook WBFunctionToolBar
 
 - (void)handleItemClickEvent:(id)event func:(int)func controlEvent:(UIControlEvents)ctrl {
-    if (func == 0x1) {
-        // 语音按钮 - 拦截所有跳转
-        // 只调 setVoiceInputFocused 且传 nil completion
-        %orig(event, func, ctrl);
+    if (func == 0x1 && isEnabled()) {
+        // 语音按钮 - 拦截并直接调用内建语音输入，不执行原始逻辑
+        Class WBRootInputViewClass = objc_getClass("WBRootInputView");
+        if (!WBRootInputViewClass) {
+            // 找不到类，回退到原始逻辑
+            %orig(event, func, ctrl);
+            return;
+        }
+        
+        // 向上遍历找到WBRootInputView
+        UIView *v = [self superview];
+        BOOL found = NO;
+        while (v) {
+            if ([v isKindOfClass:WBRootInputViewClass]) {
+                // 初始化语音输入视图
+                ((void (*)(id, SEL))objc_msgSend)(v, @selector(initVoiceInputInteractionViewIfNeeded));
+                // 激活语音输入交互视图
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(v, @selector(setVoiceInputInteractionViewActive:), YES);
+                // 隐藏当前工具栏
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(self, @selector(setHidden:), YES);
+                found = YES;
+                break;
+            }
+            v = [v superview];
+        }
+        
+        if (!found) {
+            // 找不到，回退
+            %orig(event, func, ctrl);
+        }
         return;
     }
-    %orig;
+    %orig(event, func, ctrl);
 }
 
 - (void)setVoiceInputFocused:(BOOL)focused animated:(BOOL)animated completion:(id)block {
-    // 用 nil 替换 completion block，防止任何跳转
+    // 用 nil 替换 completion block，防止任何跳转回调
     %orig(focused, animated, nil);
 }
 
