@@ -1,0 +1,56 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+DIAG7 {
+  "stat_varjb": false,
+  "stat_varjb_ti": false,
+  "stat_dpkg_usrbin": false,
+  "stat_dpkg_varjb": false,
+  "stat_pl": false,
+  "stat_sileo": false,
+  "stat_zebra": false,
+  "stat_ellekit": false,
+  "cryptex_usr": [
+    "standalone",
+    "local"
+  ],
+  "cryptex_usr_bin": null,
+  "cryptex_usr_lib": null,
+  "cryptex_lib": null,
+  "root_top": [
+    "usr",
+    "bin",
+    "sbin",
+    ".file",
+    "etc",
+    "System",
+    "var",
+    "Library",
+    "private",
+    "dev",
+    ".ba",
+    ".mb",
+    "tmp",
+    "Applications",
+    "Developer",
+    "cores"
+  ],
+  "private_top": [
+    "preboot",
+    "etc",
+    "var",
+    "xarts",
+    "system_data"
+  ]
+}
+[Apple iPhone::launchd ]-> 
+Thank you for using Frida!

@@ -1,0 +1,54 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+DIAG5 {
+  "root_top": [
+    "usr",
+    "LocalPolicy.cryptex1.img4",
+    "AppleInternal",
+    "System",
+    "private"
+  ],
+  "found": {
+    "/private/preboot/41A3D48C1AD4F83F1189A8BF097F0AE11FA8E3ACFCB3605DA3F61B137AFEAA7E38AC0602FD209A79F03C2C5CB5D6AFD3": {
+      "tweakinject": null,
+      "pl_prefs": null,
+      "pl_bundles": null,
+      "dpkg_info": null,
+      "msub": null,
+      "lib_top": null
+    },
+    "/private/preboot/41A3D48C1AD4F83F1189A8BF097F0AE11FA8E3ACFCB3605DA3F61B137AFEAA7E38AC0602FD209A79F03C2C5CB5D6AFD3/jb": {
+      "tweakinject": null,
+      "pl_prefs": null,
+      "pl_bundles": null,
+      "dpkg_info": null,
+      "msub": null,
+      "lib_top": null
+    },
+    "/private/preboot/41A3D48C1AD4F83F1189A8BF097F0AE11FA8E3ACFCB3605DA3F61B137AFEAA7E38AC0602FD209A79F03C2C5CB5D6AFD3/procursus": {
+      "tweakinject": null,
+      "pl_prefs": null,
+      "pl_bundles": null,
+      "dpkg_info": null,
+      "msub": null,
+      "lib_top": null
+    }
+  },
+  "our_target_exists": {
+    "tweak": false,
+    "entry": false,
+    "bundle": false
+  }
+}
+[Apple iPhone::SpringBoard ]-> 
+Thank you for using Frida!

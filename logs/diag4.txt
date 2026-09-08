@@ -1,0 +1,61 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+DIAG4 {
+  "preboot": [
+    "cryptex1",
+    "Cryptexes",
+    "41A3D48C1AD4F83F1189A8BF097F0AE11FA8E3ACFCB3605DA3F61B137AFEAA7E38AC0602FD209A79F03C2C5CB5D6AFD3",
+    "active"
+  ],
+  "possible_roots": [],
+  "details": {},
+  "var_top": [
+    "preferences",
+    "dextcores",
+    "networkd",
+    "hardware",
+    "empty",
+    "MobileAsset",
+    ".overprovisioning_file",
+    "staged_system_apps",
+    "buddy",
+    "vm",
+    "msgs",
+    "logs",
+    "audit",
+    ".fseventsd",
+    "installd",
+    "MobileSoftwareUpdate",
+    "mobile",
+    "MobileDevice",
+    "wireless",
+    "keybags",
+    "root",
+    "lib",
+    "db",
+    "log",
+    "folders",
+    "containers",
+    "Managed Preferences",
+    "select",
+    "run",
+    "protected",
+    ".DocumentRevisions-V100",
+    "dirs_cleaner",
+    "Keychains",
+    "tmp",
+    "datamigrator"
+  ]
+}
+[Apple iPhone::SpringBoard ]-> 
+Thank you for using Frida!

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>entry</key>
+	<dict>
+		<!-- ★ 致命字段：必须 = Library/PreferenceBundles/ 下真实目录名去掉 .bundle 后缀 -->
+		<key>bundle</key>
+		<string>WxKbNoJumpPrefs</string>
+		<key>cell</key>
+		<string>PSLinkCell</string>
+		<!-- 点进去后渲染的控制器，必须 = bundle Info.plist 的 NSPrincipalClass -->
+		<key>detail</key>
+		<string>WxKbNoJumpSettingsController</string>
+		<key>isController</key>
+		<true/>
+		<key>label</key>
+		<string>微信键盘免跳转</string>
+	</dict>
+</dict>
+</plist>

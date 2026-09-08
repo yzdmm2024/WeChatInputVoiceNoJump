@@ -1,0 +1,22 @@
+#!/bin/sh
+# 安装后：用设备端 ldid 重新签名(确保 relaxin 的 amfid 信任) + 修正可执行权限 + 注销 SpringBoard
+BUNDLE=/var/jb/Library/PreferenceBundles/WxKbNoJumpPrefs.bundle/WxKbNoJumpPrefs
+DYLIB=/var/jb/usr/lib/TweakInject/WxKbNoJump.dylib
+
+# 找设备上的 ldid（TrollFools / relaxin 自带），找不到则跳过(沿用本地 adhoc 签名)
+LDID=""
+for P in "$(command -v ldid)" /var/jb/bin/ldid /usr/bin/ldid /var/jb/usr/bin/ldid; do
+  if [ -x "$P" ]; then LDID="$P"; break; fi
+done
+if [ -n "$LDID" ]; then
+  "$LDID" -S "$BUNDLE" 2>/dev/null || true
+  "$LDID" -S "$DYLIB" 2>/dev/null || true
+  echo "ldid 重新签名完成: $LDID"
+fi
+
+chmod 0755 "$DYLIB" 2>/dev/null || true
+chmod 0755 "$BUNDLE" 2>/dev/null || true
+
+# 让 TweakInject 重新注入 dylib、设置入口生效
+killall -9 SpringBoard 2>/dev/null || true
+exit 0

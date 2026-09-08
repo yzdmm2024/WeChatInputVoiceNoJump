@@ -1,0 +1,25 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+CFBundleExecutable = wxkb_plugin
+NSExtensionPointIdentifier = com.apple.keyboard-service
+NSExtensionPrincipalClass  = WBInputViewController
+NSExtensionAttributes = {
+    IsASCIICapable = 1;
+    PrefersRightToLeft = 0;
+    PrimaryLanguage = "zh-Hans";
+    RequestsOpenAccess = 1;
+}
+MAIN CFBundleVersion = 736
+[DONE read_kbext_info]
+[Apple iPhone::SpringBoard ]-> 
+Thank you for using Frida!

@@ -1,0 +1,32 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+DIAG {
+  "entry_plist_exists": false,
+  "bundle_dir_exists": false,
+  "bundle_listing": null,
+  "tweak_dylib_exists": false,
+  "tweak_plist_exists": false,
+  "pl_prefs_dir": null,
+  "pl_bundles_dir": null,
+  "pl_dylib_msub": false,
+  "pl_dylib_inject": false,
+  "pl_dylib_elle": false,
+  "dpkg_pl_msub": false,
+  "dpkg_pl_root": false,
+  "our_entry": null,
+  "our_info": null,
+  "our_root": null,
+  "our_exec": false
+}
+[Apple iPhone::SpringBoard ]-> 
+Thank you for using Frida!

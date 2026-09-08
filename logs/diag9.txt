@@ -1,0 +1,15 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+message: [Apple iPhone::launchd ]-> {'type': 'send', 'payload': {'type': 'DIAG9', 'lines': ['wxkb.app exists=true', 'Frameworks(all)=["wcwss.framework","flurry.framework","YYImage.framework","WXP2PTransferDyn.framework","hermes.framework","AALoadRuler.framework"]', 'possible-injected-in-Frameworks=[]', 'embedded.mobileprovision exists=false', '_CodeSignature exists=true', 'PlugIns=["WBVoiceInputWidgetExtension.appex","wxkb_plugin.appex","WXKBShareExtension.appex","widgetExtension.appex"]', '  WBVoiceInputWidgetExtension.appex bid=com.tencent.wetype.liveActivity point=com.apple.widgetkit-extension', '    WBVoiceInputWidgetExtension.appex/Frameworks=[]', '    WBVoiceInputWidgetExtension.appex/embedded.mobileprovision=false', '  wxkb_plugin.appex bid=com.tencent.wetype.keyboard point=com.apple.keyboard-service', '    wxkb_plugin.appex/Frameworks=[]', '    wxkb_plugin.appex/embedded.mobileprovision=false', '  WXKBShareExtension.appex bid=com.tencent.wetype.shareExtension point=com.apple.share-services', '    WXKBShareExtension.appex/Frameworks=[]', '    WXKBShareExtension.appex/embedded.mobileprovision=false', '  widgetExtension.appex bid=com.tencent.wetype.widget point=com.apple.widgetkit-extension', '    widgetExtension.appex/Frameworks=[]', '    widgetExtension.appex/embedded.mobileprovision=false', 'Relaxin.app bid=com.aapl.relaxin ver=0 exec=Relaxin', 'TrollFools.app bid=wiki.qaq.TrollFools ver=249 exec=TrollFools', 'TrollFools.app bid=wiki.qaq.slpmods.TrollFools ver=47 exec=TrollFools', 'TrollFools.app bid=com.huami.TrollFools ver=20 exec=TrollFools', 'dylib插件库.app bid=com.dylibplugin.library ver=1.5.0 exec=dylib插件库']}} data: None
+
+Thank you for using Frida!

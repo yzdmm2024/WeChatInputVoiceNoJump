@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<!-- ★ 必须与 bundle 目录名一致：目录叫 WxKbNoJumpPrefs.bundle，这里就填 WxKbNoJumpPrefs -->
+	<key>CFBundleExecutable</key>
+	<string>WxKbNoJumpPrefs</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.wxkbd.nojump.prefs</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>微信键盘免跳转</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.0</string>
+	<!-- ★ 设置页主控制器类，必须 = entry.plist 的 detail 字段 -->
+	<key>NSPrincipalClass</key>
+	<string>WxKbNoJumpSettingsController</string>
+</dict>
+</plist>

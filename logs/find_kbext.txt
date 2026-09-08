@@ -1,0 +1,21 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+=== search /var/containers/Bundle/Application ===
+FOUND container: /var/containers/Bundle/Application/FBBCCDD2-C435-413A-852D-0823B8018D97/wxkb.app
+  PLUGIN WBVoiceInputWidgetExtension.appex  id=com.tencent.wetype.liveActivity  ext=com.apple.widgetkit-extension
+  PLUGIN wxkb_plugin.appex  id=com.tencent.wetype.keyboard  ext=com.apple.keyboard-service
+  PLUGIN WXKBShareExtension.appex  id=com.tencent.wetype.shareExtension  ext=com.apple.share-services
+  PLUGIN widgetExtension.appex  id=com.tencent.wetype.widget  ext=com.apple.widgetkit-extension
+[DONE find_kbext]
+[Apple iPhone::SpringBoard ]-> 
+Thank you for using Frida!

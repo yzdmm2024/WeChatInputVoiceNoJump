@@ -1,0 +1,25 @@
+==================================================
+  WxKeyboardNoJump 构建
+  SDK  = /c/Users/Administrator/Desktop/8月/本机制造插件的必备东西/2-iOS_SDK/iPhoneOS.sdk
+  clang= /c/Users/Administrator/Desktop/8月/本机制造插件的必备东西/3-LLVM工具链/bin/clang
+==================================================
+==> [1] Logos 预处理 Tweak.xm
+OK: C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\src\Tweak.xm -> C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\build\Tweak.m  (registrations=4, ctor=yes)
+==> [2] 中文转义
+preprocess: C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\build\Tweak.m -> C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\build\Tweak.gen.m (8113 bytes)
+==> [3] 编译 Tweak
+==> [4] 链接 Tweak.dylib
+==> [5] adhoc 签名 Tweak
+签名完成: C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\out\WxKeyboardNoJump.dylib -> C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\out\WxKeyboardNoJump.signed (70781 bytes)
+LC_CODE_SIGNATURE: off=70056 size=725
+  CodeDirectory: len=705 ver=0x20400 hashOff=97 identOff=88 nSpecial=1 nCodeSlots=18 codeLimit=70056 hashSize=32 type=2 page=2^12
+  code slots 校验: PASS
+==> [6] 编译设置面板可执行
+签名完成: C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\out\WxKeyboardNoJumpPrefs.dylib -> C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\out\WxKeyboardNoJumpPrefs.signed (67685 bytes)
+LC_CODE_SIGNATURE: off=66992 size=693
+  CodeDirectory: len=673 ver=0x20400 hashOff=97 identOff=88 nSpecial=1 nCodeSlots=17 codeLimit=66992 hashSize=32 type=2 page=2^12
+  code slots 校验: PASS
+==> [7] 组装 rootless deb 布局
+DEB_OK C:\Users\Administrator\Desktop\8月\微信键盘免跳转\WxKeyboardNoJump\out\WxKeyboardNoJump_v1.0.0_iphoneos-arm64.deb (8124 bytes)
+ALL_DONE: /c/Users/Administrator/Desktop/8月/微信键盘免跳转/WxKeyboardNoJump/out/WxKeyboardNoJump_v1.0.0_iphoneos-arm64.deb
+-rw-r--r-- 1 Administrator 197121 8124 Sep  8 14:46 /c/Users/Administrator/Desktop/8月/微信键盘免跳转/WxKeyboardNoJump/out/WxKeyboardNoJump_v1.0.0_iphoneos-arm64.deb

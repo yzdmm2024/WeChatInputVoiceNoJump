@@ -1,0 +1,36 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+DIAGROOT {
+  "pid": 1,
+  "uid": "0xf1743401e328f57c",
+  "exist": {
+    "/var/jb": false,
+    "/var/jb/usr/lib/TweakInject": false,
+    "/var/jb/Library/PreferenceLoader/Preferences": false,
+    "/var/jb/Library/PreferenceBundles": false,
+    "/var/jb/var/lib/dpkg/info": false,
+    "/Library/MobileSubstrate/DynamicLibraries": false,
+    "/Library/PreferenceLoader/Preferences": false,
+    "/Library/PreferenceBundles": false,
+    "/var/lib/dpkg/info": false,
+    "/var/lib/dpkg/status": false,
+    "/usr/lib/TweakInject": false,
+    "/private/preboot/41A3D48C1AD4F83F1189A8BF097F0AE11FA8E3ACFCB3605DA3F61B137AFEAA7E38AC0602FD209A79F03C2C5CB5D6AFD3/usr/lib/TweakInject": false
+  },
+  "ti": null,
+  "pl": null,
+  "bundles": null,
+  "dpkg": null
+}
+[Apple iPhone::launchd ]-> 
+Thank you for using Frida!

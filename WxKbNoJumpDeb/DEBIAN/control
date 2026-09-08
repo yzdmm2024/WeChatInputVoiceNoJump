@@ -1,0 +1,9 @@
+Package: com.wxkbd.nojump
+Name: 微信键盘免跳转
+Version: 1.0.3
+Architecture: iphoneos-arm64
+Maintainer: yzdmm
+Author: yzdmm
+Section: Tweaks
+Description: 微信输入法语音免跳转 + 键盘外观定制（圆角/大小/颜色/透明度）。rootless (Relaxin/ElleKit) deb。
+Depends: mobilesubstrate (>= 0.9.5000), preferenceloader

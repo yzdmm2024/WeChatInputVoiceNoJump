@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Filter</key>
+	<dict>
+		<key>Bundles</key>
+		<array>
+			<!-- ★ 键盘扩展：全局跑的进程，语音按钮/键盘 UI 都在这里。必须注它，注主 app 无效 -->
+			<string>com.tencent.wetype.keyboard</string>
+			<!-- 微信输入法主 app（设置/管理壳） -->
+			<string>com.tencent.wetype</string>
+			<!-- ★ 必须有：设置进程加载本 tweak / PreferenceBundle 才能正常显示入口 -->
+			<string>com.apple.Preferences</string>
+		</array>
+	</dict>
+</dict>
+</plist>

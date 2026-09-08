@@ -1,0 +1,54 @@
+     ____
+    / _  |   Frida 16.2.1 - A world-class dynamic instrumentation toolkit
+   | (_| |
+    > _  |   Commands:
+   /_/ |_|       help      -> Displays the help system
+   . . . .       object?   -> Display information about 'object'
+   . . . .       exit/quit -> Exit
+   . . . .
+   . . . .   More info at https://frida.re/docs/home/
+   . . . .
+   . . . .   Connected to Apple iPhone (id=00008101-0012241C3A7A001E)
+Attaching...
+DIAG3 {
+  "exists": {
+    "/var/jb": false,
+    "/var/sileo": false,
+    "/private/preboot": true,
+    "/": true,
+    "/usr/lib/TweakInject": false,
+    "/Library/MobileSubstrate/DynamicLibraries": false,
+    "/var/jb/Library/MobileSubstrate/DynamicLibraries": false,
+    "/var/jb/usr/lib/TweakInject": false,
+    "/var/jb/Library/PreferenceLoader": false,
+    "/var/jb/Library/PreferenceBundles": false,
+    "/Library/PreferenceLoader/Preferences": false,
+    "/Library/PreferenceBundles": false,
+    "/Applications/Sileo.app": false,
+    "/var/jb/Applications/Sileo.app": false,
+    "/Applications/Zebra.app": false,
+    "/var/jb/Applications/Zebra.app": false
+  },
+  "markers": {
+    ".bootstrapped": false,
+    ".installed_dopamine": false,
+    ".installed_ellekit": false,
+    "/.relaxin": false,
+    "/var/jb/.installed_dopamine": false,
+    "/var/jb/.bootstrapped": false,
+    "private/var/jb": false,
+    "/var/lib/dpkg/info": false,
+    "/var/jb/var/lib/dpkg/info": false,
+    "/var/lib/dpkg/status": false
+  },
+  "dpkg_info_var": null,
+  "dpkg_info_jb": null,
+  "ti_varjb": null,
+  "ti_usr": null,
+  "ti_varjb2": null,
+  "pl_varjb": null,
+  "pl_usr": null,
+  "pl_preboot": null
+}
+[Apple iPhone::SpringBoard ]-> 
+Thank you for using Frida!
