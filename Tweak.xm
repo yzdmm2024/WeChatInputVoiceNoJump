@@ -170,10 +170,8 @@ static UIView *wx_findFirstResponder(UIView *v) {
 
 static BOOL wx_hasRecordPermission(void) {
     @try {
-        if (&AVAudioSessionRecordPermission) {
-            AVAudioSession *s = [AVAudioSession sharedInstance];
-            return [s recordPermission] == AVAudioSessionRecordPermissionGranted;
-        }
+        AVAudioSession *s = [AVAudioSession sharedInstance];
+        return [s recordPermission] == AVAudioSessionRecordPermissionGranted;
     } @catch (NSException *e) {
         // 沙盒/无音频会话时不阻塞语音激活
     }
@@ -481,7 +479,6 @@ static void wx_installOpenURLHooks(void) {
             if ([hooked containsObject:tag]) continue;
             // [FIX3] 不再 break：两个 selector 都要挂（j 循环完整跑完）
             Class implCls = classes[i];
-            Class replSelCls = [UIInputViewController class]; // wx_ii_* 定义处
             // 但要确保被注入的都是「UIInputViewController 子类 / 或具有 wx_ii_* 方法」。
             // 直接对任意 WB* 类调用 wx_swizzle，若该类没有 wx_ii_* 方法则 no-op（安全）。
             wx_swizzle(implCls, sels[j], NSSelectorFromString(reps[j]));
@@ -533,7 +530,7 @@ static void wx_entry(void) {
                    @selector(wx_present:animated:completion:));
 
         // [FIX2] 延迟挂外观 hook，只成功一次
-        static __block BOOL didHookStyle = NO;
+        static BOOL didHookStyle = NO;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
                             if (didHookStyle) return;
