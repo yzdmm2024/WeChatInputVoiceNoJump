@@ -25,12 +25,16 @@
 - **坑C（入口字段）**：PreferenceLoader 入口 `bundle` 必须等于 bundle 目录名、`detail` 必须等于 `NSPrincipalClass`
   → `WxKbNoJump.plist` 的 `bundle = WxKbNoJumpPrefs`，`Info.plist` 的 `NSPrincipalClass = WxKbNoJumpSettingsController`
 
+- **坑D（rootless 布局路径）**：rootless 包 Theos 会自动给所有根路径加 `/var/jb` 前缀。
+  布局文件**不能**再写 `layout/var/jb/...`，否则会变成 `/var/jb/var/jb/...`，PreferenceLoader 入口找不到、设置项不显示。
+  → 布局用 `layout/Library/PreferenceLoader/Preferences/WxKbNoJump.plist`（不带 var/jb）
+
 ## 本地构建
 
 ```bash
 export THEOS=/path/to/theos
 make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-# 产物： packages/com.wxkbd.nojump_1.1.0_iphoneos-arm64e.deb
+# 产物： packages/com.wxkbd.nojump_1.1.1_iphoneos-arm64.deb
 ```
 
 ## CI 构建（推荐）
@@ -48,7 +52,7 @@ WxKbNoJumpPrefs/                 设置面板 bundle 源码
   ├─ WxKbNoJumpSettingsController.m
   ├─ Info.plist  Root.plist
 control                          deb 包元数据
-layout/var/jb/Library/PreferenceLoader/Preferences/WxKbNoJump.plist   面板入口
+layout/Library/PreferenceLoader/Preferences/WxKbNoJump.plist   面板入口（rootless 自动加 /var/jb 前缀）
 .github/workflows/build.yml      CI 构建
 archive/                         早期手工编译尝试 + 参考仓库（已废弃，仅供追溯）
 docs/ logs/ tools/               分析文档 / 开发诊断日记 / frida 脚本
