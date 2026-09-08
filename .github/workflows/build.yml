@@ -25,9 +25,9 @@ jobs:
           sudo mkdir -p /tmp/theos
           sudo chown $(whoami) /tmp/theos
           git clone --recursive https://github.com/theos/theos.git /tmp/theos
-          curl -LO https://github.com/theos/sdks/releases/latest/download/iPhoneOS16.0.sdk.tar.xz
-          tar -xzf iPhoneOS16.0.sdk.tar.xz -C /tmp/theos/sdks
-          rm iPhoneOS16.0.sdk.tar.xz
+          curl -L https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz -o iPhoneOS16.5.sdk.tar.xz
+          tar -xzf iPhoneOS16.5.sdk.tar.xz -C /tmp/theos/sdks
+          rm iPhoneOS16.5.sdk.tar.xz
 
       - name: Build
         run: |

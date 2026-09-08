@@ -1,5 +1,5 @@
 # 微信输入法自用 - 语音免跳转
-TARGET := iphone:clang:14.0:14.0
+TARGET := iphone:clang:14.0:16.5
 ARCHS = arm64
 
 include $(THEOS)/makefiles/common.mk
