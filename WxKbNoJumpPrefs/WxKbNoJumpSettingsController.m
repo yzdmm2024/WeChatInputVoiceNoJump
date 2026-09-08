@@ -1,17 +1,11 @@
 //
 //  WxKbNoJumpSettingsController.m — 微信键盘免跳转设置面板（PSListController）
 //
-//  说明：面板由 PreferenceLoader 加载到 system Settings。
-//  关键点（对应 README 坑 F）：
-//   - 必须读写真实的 `_specifiers` ivar（不能只靠关联对象，否则框架读不到列表 → 面板空白）
-//   - 必须在 Root.plist 里声明正确的 specifiers（含滑块 + 开关注册），
-//     并在加载时把「用于预览的实时值」缓存下来。
-//
-//  实现要点：
-//   - loadSpecifiersFromPlistName 读取 Root.plist 生成骨架
-//   - 重写 cellForRowAtIndexPath 给 PSSliderCell 显示中文名 + 当前值
-//   - 顶部 WxKbKeyboardPreviewView 实时预览键盘外观
-//   - 用 class_getInstanceVariable + object_get/setIvar 读写 _specifiers
+//  关键：本控制器只在「设置」进程（arm64e）里被 NSBundle 加载。
+//  写法严格对齐同机已验证可用的 键盘下方状态(KSSettingsController)：
+//   - specifiers 直接读写真实的 _specifiers 裸 ivar（PSListController 内部就读它）
+//   - 面板 UI 一律放 viewDidLoad，访问 self.tableView（不是 self.table）
+//   - 任何偏好写入都先 [super setPreferenceValue:...]（走 cfprefsd，沙盒安全）
 //
 
 #import <Preferences/PSListController.h>
@@ -19,7 +13,9 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-#pragma mark - 键盘外观预览视图
+static NSString *const kWxSuite = @"com.wxkbd.nojump";
+
+#pragma mark - 键盘外观预览视图（纯 UIView，drawRect 自绘，绝不涉及未实现选择器）
 
 @interface WxKbKeyboardPreviewView : UIView
 @property (nonatomic, assign) CGFloat radius;
@@ -38,7 +34,6 @@
     return self;
 }
 
-// 画一个简化 QWERTY 键盘，方便实时预览
 - (void)drawRect:(CGRect)rect {
     CGContextRef ctx = UIGraphicsGetCurrentContext();
     CGFloat W = self.bounds.size.width;
@@ -50,7 +45,7 @@
                                                   cornerRadius:self.radius];
     [bg fill];
 
-    // 三排按键（简化布局）
+    // 三排按键（简化布局，仅用于预览外观）
     NSArray *rows = @[
         @[@"Q",@"W",@"E",@"R",@"T",@"Y",@"U",@"I",@"O",@"P"],
         @[@"A",@"S",@"D",@"F",@"G",@"H",@"J",@"K",@"L"],
@@ -67,7 +62,6 @@
             CGRect krect = CGRectMake(x, top, keyW, rowH - margin);
             CGContextSetRGBFillColor(ctx, 0.9, 0.9, 0.92, 1.0);
             CGContextFillRect(ctx, krect);
-            // 画文案
             UIColor *tc = [UIColor darkGrayColor];
             NSDictionary *attrs = @{ NSFontAttributeName: [UIFont systemFontOfSize:rowH * 0.35],
                                      NSForegroundColorAttributeName: tc };
@@ -89,89 +83,72 @@
 
 @implementation WxKbNoJumpSettingsController
 
-- (instancetype)init {
-    self = [super init];
-    if (self) {
-        _preview = [[WxKbKeyboardPreviewView alloc] initWithFrame:CGRectZero];
-    }
-    return self;
-}
-
+// 关键：直接读写 PSListController 的 _specifiers 裸 ivar（第一次加载后缓存，避免每次重建）
 - (id)specifiers {
-    // 关键：读写真实的 _specifiers ivar（README 坑 F）
-    Ivar iv = class_getInstanceVariable([PSListController class], "_specifiers");
-    if (iv) {
-        id v = object_getIvar(self, iv);
-        if (v) return v;
+    if (!_specifiers) {
+        _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
     }
-
-    return [self loadSpecifiersFromPlistName:@"Root" target:self];
+    return _specifiers;
 }
 
-- (void)loadView {
-    [super loadView];
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"微信键盘免跳转";
 
-    // 顶部加入预览视图（当作 tableHeaderView）
+    // 顶部预览视图（tableHeaderView），self.tableView 在 super 之后一定存在
+    CGFloat W = self.view.bounds.size.width > 0 ? self.view.bounds.size.width : 320;
     CGFloat headerH = 150;
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, headerH)];
+    self.preview = [[WxKbKeyboardPreviewView alloc] initWithFrame:CGRectMake(16, 8, W - 32, headerH - 16)];
+    self.preview.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, W, headerH)];
     header.backgroundColor = [UIColor clearColor];
-    self.preview.frame = CGRectMake(16, 8, header.bounds.size.width - 32, headerH - 16);
     [header addSubview:self.preview];
-    self.table.tableHeaderView = header;
+    self.tableView.tableHeaderView = header;
 
-    // 从现有 specifiers 读当前值并刷新预览
-    [self refreshPreviewFromSpecifiers];
+    [self refreshPreview];
 }
 
-- (void)refreshPreviewFromSpecifiers {
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self refreshPreview];
+}
+
+- (void)refreshPreview {
     NSArray *specs = [self specifiers];
     for (PSSpecifier *s in specs) {
         NSString *key = [s propertyForKey:@"key"];
-        if ([key isEqualToString:@"wxkbdCornerRadius"]) {
-            id v = [specs valueForKeyPath:@"wxkbdCornerRadius"];
-            _preview.radius = [v respondsToSelector:@selector(floatValue)] ? [v floatValue] : 10;
-        } else if ([key isEqualToString:@"wxkbdBgR"]) {
-            id v = [self readPreference:key];
-            _preview.red = [v respondsToSelector:@selector(floatValue)] ? [v floatValue] : 0.15;
-        } else if ([key isEqualToString:@"wxkbdBgG"]) {
-            id v = [self readPreference:key];
-            _preview.green = [v respondsToSelector:@selector(floatValue)] ? [v floatValue] : 0.16;
-        } else if ([key isEqualToString:@"wxkbdBgB"]) {
-            id v = [self readPreference:key];
-            _preview.blue = [v respondsToSelector:@selector(floatValue)] ? [v floatValue] : 0.20;
-        } else if ([key isEqualToString:@"wxkbdBgAlpha"]) {
-            id v = [self readPreference:key];
-            _preview.alpha = [v respondsToSelector:@selector(floatValue)] ? [v floatValue] : 1.0;
-        }
+        if (![key isKindOfClass:[NSString class]] || key.length == 0) continue;
+        CGFloat f = 0;
+        id v = [self readPreference:key];
+        if ([v respondsToSelector:@selector(floatValue)]) f = [v floatValue];
+        if      ([key isEqualToString:@"wxkbdCornerRadius"]) _preview.radius = f ?: 10.0;
+        else if ([key isEqualToString:@"wxkbdBgR"])          _preview.red   = f ?: 0.15;
+        else if ([key isEqualToString:@"wxkbdBgG"])          _preview.green = f ?: 0.16;
+        else if ([key isEqualToString:@"wxkbdBgB"])          _preview.blue  = f ?: 0.20;
+        else if ([key isEqualToString:@"wxkbdBgAlpha"])      _preview.alpha = f ?: 1.0;
     }
     [_preview setNeedsDisplay];
 }
 
 - (id)readPreference:(NSString *)key {
     CFTypeRef v = CFPreferencesCopyAppValue((__bridge CFStringRef)key,
-                                            CFSTR("com.wxkbd.nojump"));
-    if (!v) return nil;
-    return CFBridgingRelease(v);
+                                            (__bridge CFStringRef)kWxSuite);
+    return v ? CFBridgingRelease(v) : nil;
 }
 
+// 开关/滑块变动都走这里：先 [super ...] 走 cfprefsd 标准写回（沙盒放行），再实时刷新预览
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
-    [super setPreferenceValue:value specifier:specifier];
-    // 用户在面板里改动滑块 → 实时刷新预览
-    NSString *key = [specifier propertyForKey:@"key"];
-    CGFloat f = [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : 0;
-    if ([key isEqualToString:@"wxkbdCornerRadius"]) _preview.radius = f;
-    else if ([key isEqualToString:@"wxkbdBgR"])    _preview.red = f;
-    else if ([key isEqualToString:@"wxkbdBgG"])    _preview.green = f;
-    else if ([key isEqualToString:@"wxkbdBgB"])    _preview.blue = f;
-    else if ([key isEqualToString:@"wxkbdBgAlpha"]) _preview.alpha = f;
+    @try {
+        [super setPreferenceValue:value specifier:specifier];
+        NSString *key = [specifier propertyForKey:@"key"];
+        CGFloat f = [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : 0;
+        if      ([key isEqualToString:@"wxkbdCornerRadius"]) _preview.radius = f;
+        else if ([key isEqualToString:@"wxkbdBgR"])          _preview.red   = f;
+        else if ([key isEqualToString:@"wxkbdBgG"])          _preview.green = f;
+        else if ([key isEqualToString:@"wxkbdBgB"])          _preview.blue  = f;
+        else if ([key isEqualToString:@"wxkbdBgAlpha"])      _preview.alpha = f;
+        [_preview setNeedsDisplay];
+    } @catch (NSException *e) {}
 }
 
 @end
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-__attribute__((constructor))
-static void WxKbNoJumpPrefsEntry(void) {
-    // 空构造，确保分类/类被正确注册（Optional）
-}
-#pragma clang diagnostic pop
