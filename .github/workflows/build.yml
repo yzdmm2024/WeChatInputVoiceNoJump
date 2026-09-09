@@ -7,7 +7,10 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # macos-13 (Intel) 上 /usr/local 对 runner 用户可写；
+    # macos-latest 已切到 arm64，/usr/local 归 root 且不可写，
+    # 导致 theos-action 缓存解包 gtar 报 Permission denied 而构建失败。
+    runs-on: macos-13
     steps:
       - name: Checkout
         uses: actions/checkout@v4
