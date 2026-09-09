@@ -9,11 +9,11 @@ ARCHS = arm64 arm64e
 
 include $(THEOS)/makefiles/common.mk
 
-# ===== Tweak: 语音免跳转 + 键盘外观定制 =====
+# ===== Tweak: 语音免跳转（SpringBoard 注入，动画移除术） =====
 TWEAK_NAME = WxKbNoJump
 WxKbNoJump_FILES = Tweak.xm
 WxKbNoJump_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-undeclared-selector
-WxKbNoJump_FRAMEWORKS = UIKit Foundation AVFoundation
+WxKbNoJump_FRAMEWORKS = UIKit Foundation
 WxKbNoJump_INSTALL_PATH = /Library/TweakInject
 
 include $(THEOS_MAKE_PATH)/tweak.mk
