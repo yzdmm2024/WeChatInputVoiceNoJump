@@ -1,7 +1,7 @@
 Package: com.wxkbd.nojump
 Name: WeType NoJump (微信键盘免跳转)
 Depends: mobilesubstrate (>= 0.9.5000), preferenceloader (>= 2.2.2)
-Version: 1.1.17
+Version: 1.1.18
 Architecture: iphoneos-arm64
 Description: 微信输入法语音全局免跳转（注入 SpringBoard 隐藏切换动画，后台录音回填，屏幕上不跳主程序）
 Maintainer: WxKbNoJump
