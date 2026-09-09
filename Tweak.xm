@@ -1,5 +1,5 @@
 //
-//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.18
+//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.19
 //
 //  原理（源自开源 WTVRBGLauncher，作者 Lessica / 82Flex，已改写为仅微信输入法并去掉外观定制）：
 //  键盘扩展没有麦克风权限，语音必须在 wxkb.app 主程序里录。所谓「跳一下主程序」本质是
@@ -11,7 +11,7 @@
 //      用一帧快照遮罩消除切换残影，做到“看不出跳”。
 //  结果：wxkb.app 照常在后台录音并把文字回填到输入框，但屏幕上体验即“免跳转”。
 //
-//  强制常开悬浮窗（1.1.18，已用 frida 在真机确认）：
+//  强制常开悬浮窗（1.1.18 用 frida 真机确认键名；1.1.19 修正 dylib 安装路径为 /usr/lib/TweakInject，roothide 设备才能注入）：
 //  微信输入法把“录音待机模式”存为类属性 WBVoiceinputPreferences.recordingStandbyMode
 //  （@property(class) NSInteger），持久化在 App Group 的 WBVoiceinputPreferences.plist。
 //  真机实测：悬浮窗模式 = 1，通知栏模式 = 0。
@@ -192,6 +192,6 @@ static void ReloadPrefs(void) {
         CFNotificationSuspensionBehaviorCoalesce
     );
     NSString *bid = [[NSBundle mainBundle] bundleIdentifier];
-    NSLog(@"[WxKbNoJump] LOADED v1.1.18 noJump=%d forceFloating=%d (SpringBoard anim-disable + WeType floating), bundle=%@",
+    NSLog(@"[WxKbNoJump] LOADED v1.1.19 noJump=%d forceFloating=%d (SpringBoard anim-disable + WeType floating), bundle=%@",
           gIsEnabled, gForceFloating, bid);
 }

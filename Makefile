@@ -14,7 +14,7 @@ TWEAK_NAME = WxKbNoJump
 WxKbNoJump_FILES = Tweak.xm
 WxKbNoJump_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-undeclared-selector
 WxKbNoJump_FRAMEWORKS = UIKit Foundation
-WxKbNoJump_INSTALL_PATH = /Library/TweakInject
+WxKbNoJump_INSTALL_PATH = /usr/lib/TweakInject
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
