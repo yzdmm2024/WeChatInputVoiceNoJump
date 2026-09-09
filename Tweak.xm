@@ -108,7 +108,7 @@ static void WxKbProbeVoicePrefs(void) {
               [k rangeOfString:@"voice"   options:NSCaseInsensitiveSearch].location != NSNotFound ||
               [k rangeOfString:@"Mode"    options:NSCaseInsensitiveSearch].location != NSNotFound ||
               [k rangeOfString:@"Float"   options:NSCaseInsensitiveSearch].location != NSNotFound ||
-              [k rangeOfString:@"Redirect"options:NSCaseInsensitiveSearch].location != NSNotFound)) {
+              [k rangeOfString:@"Redirect" options:NSCaseInsensitiveSearch].location != NSNotFound)) {
         NSLog(@"[WxKbNoJump] PREFS-WRITE key=%@ value=%@ app=%@", k, value, applicationID);
     }
     %orig(key, value, applicationID, userName, hostName);
