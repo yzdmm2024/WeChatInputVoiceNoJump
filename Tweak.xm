@@ -282,7 +282,7 @@ static void wx_overrideReturnBool(Class cls, SEL sel, BOOL forceVal) {
         BOOL (*orig)(id, SEL) = (BOOL(*)(id, SEL))oImp;
         return orig(self, _cmd);
     };
-    IMP newImp = imp_implementationWithBlock((__bridge void *)block);
+    IMP newImp = imp_implementationWithBlock(block);   // 接收 id（block 对象），不能桥转 void*
     if (!newImp) return;
     method_setImplementation(m, newImp);   // 原地替换，保留原 IMP 在 block 内供回退
 }
