@@ -1,5 +1,5 @@
 //
-//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.15
+//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.16
 //
 //  原理（源自开源 WTVRBGLauncher，作者 Lessica / 82Flex，已改写为仅微信输入法并去掉外观定制）：
 //  键盘扩展没有麦克风权限，语音必须在 wxkb.app 主程序里录。所谓「跳一下主程序」本质是
@@ -100,20 +100,13 @@ static void ReloadPrefs(void) {
     if ([prevEntity isKindOfClass:eCls] && [nextEntity isKindOfClass:eCls]) {
         NSString *prevBundle = prevEntity.application.bundleIdentifier;
         NSString *nextBundle = nextEntity.application.bundleIdentifier;
-        NSURL *nextURL = [nextEntity.activationSettings objectForActivationSetting:SBActivationSettingURL];
 
-        // 去微信输入法主程序、且触发是语音录音 URL → 禁掉切换动画（免跳转）
-        if ([nextBundle isEqualToString:@"com.tencent.wetype"] &&
-            [nextURL isKindOfClass:[NSURL class]] &&
-            [nextURL.scheme isEqualToString:@"wetype"] &&
-            [nextURL.host isEqualToString:@"WXKBURL_STARTVOICERECORD"]) {
-            gFrozenAppSceneIdentifier = prevBundle;
-            return YES;
-        }
-
-        // 从微信输入法主程序切回（录音结束、文字回填）→ 同样禁动画，做到双向无感
-        BOOL isFromBreadcrumb = [nextEntity.activationSettings flagForActivationSetting:SBActivationSettingFromBreadcrumb];
-        if (isFromBreadcrumb && [prevBundle isEqualToString:@"com.tencent.wetype"]) {
+        // 只要这次切换涉及微信输入法主程序（com.tencent.wetype），就禁掉切换动画。
+        // 不依赖具体语音 URL/Host（各版本可能不同），只要“去微信输入法”或“从微信输入法回来”都禁。
+        if ([prevBundle isEqualToString:@"com.tencent.wetype"] ||
+            [nextBundle isEqualToString:@"com.tencent.wetype"]) {
+            NSLog(@"[WxKbNoJump] disable animation: WeType transition prev=%@ next=%@", prevBundle, nextBundle);
+            if (prevBundle.length) gFrozenAppSceneIdentifier = prevBundle;
             return YES;
         }
     }
@@ -168,5 +161,5 @@ static void ReloadPrefs(void) {
         NULL,
         CFNotificationSuspensionBehaviorCoalesce
     );
-    NSLog(@"[WxKbNoJump] LOADED v1.1.15 noJump=%d (SpringBoard animation-disable mode, WeType only)", gIsEnabled);
+    NSLog(@"[WxKbNoJump] LOADED v1.1.16 noJump=%d (SpringBoard animation-disable mode, WeType only)", gIsEnabled);
 }
