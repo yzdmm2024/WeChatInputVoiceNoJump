@@ -1,5 +1,5 @@
 //
-//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.16
+//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.17
 //
 //  原理（源自开源 WTVRBGLauncher，作者 Lessica / 82Flex，已改写为仅微信输入法并去掉外观定制）：
 //  键盘扩展没有麦克风权限，语音必须在 wxkb.app 主程序里录。所谓「跳一下主程序」本质是
@@ -88,6 +88,40 @@ static void ReloadPrefs(void) {
     NSLog(@"[WxKbNoJump] prefs reloaded noJump=%d", gIsEnabled);
 }
 
+#pragma mark - 强制常开悬浮窗（1.1.17：探测 + 尽力强制，待用户日志确认键名后固化）
+
+// 探测：列出 WBVoiceinputPreferences 的所有方法，定位“语音模式”的设置键/方法
+static void WxKbProbeVoicePrefs(void) {
+    Class cls = NSClassFromString(@"WBVoiceinputPreferences");
+    if (!cls) { NSLog(@"[WxKbNoJump] PROBE WBVoiceinputPreferences NOT found"); return; }
+    unsigned mc; Method *ms = class_copyMethodList(cls, &mc);
+    NSMutableString *sb = [NSMutableString stringWithFormat:@"[WxKbNoJump] PROBE WBVoiceinputPreferences methods(%u):", mc];
+    for (unsigned i=0;i<mc;i++) [sb appendFormat:@" %s", sel_getName(method_getName(ms[i]))];
+    free(ms);
+    NSLog(@"%@", sb);
+}
+
+// 记录微信输入法写出的偏好键（切换 悬浮窗/通知栏 时会写出“模式”键名+值）
+%hookf(void, CFPreferencesSetValue, CFStringRef key, CFPropertyListRef value, CFStringRef applicationID, CFStringRef userName, CFStringRef hostName) {
+    NSString *k = (__bridge NSString *)key;
+    if (k && ([k rangeOfString:@"Voice"   options:NSCaseInsensitiveSearch].location != NSNotFound ||
+              [k rangeOfString:@"voice"   options:NSCaseInsensitiveSearch].location != NSNotFound ||
+              [k rangeOfString:@"Mode"    options:NSCaseInsensitiveSearch].location != NSNotFound ||
+              [k rangeOfString:@"Float"   options:NSCaseInsensitiveSearch].location != NSNotFound ||
+              [k rangeOfString:@"Redirect"options:NSCaseInsensitiveSearch].location != NSNotFound)) {
+        NSLog(@"[WxKbNoJump] PREFS-WRITE key=%@ value=%@ app=%@", k, value, applicationID);
+    }
+    %orig(key, value, applicationID, userName, hostName);
+}
+
+// 尽力强制：若微信输入法用 setVoiceInputMode: 设置模式且 1=悬浮窗，则强制为 1
+%hook WBVoiceinputPreferences
+- (void)setVoiceInputMode:(NSInteger)m {
+    NSLog(@"[WxKbNoJump] setVoiceInputMode orig=%ld -> force 1", (long)m);
+    %orig(1);
+}
+%end
+
 %hook SBWorkspaceTransitionContext
 
 - (BOOL)animationDisabled {
@@ -161,5 +195,9 @@ static void ReloadPrefs(void) {
         NULL,
         CFNotificationSuspensionBehaviorCoalesce
     );
-    NSLog(@"[WxKbNoJump] LOADED v1.1.16 noJump=%d (SpringBoard animation-disable mode, WeType only)", gIsEnabled);
+    NSString *bid = [[NSBundle mainBundle] bundleIdentifier];
+    if ([bid isEqualToString:@"com.tencent.wetype"]) {
+        WxKbProbeVoicePrefs();   // 探测语音模式设置键（1.1.17）
+    }
+    NSLog(@"[WxKbNoJump] LOADED v1.1.17 noJump=%d (SpringBoard anim-disable + WeType probe), bundle=%@", gIsEnabled, bid);
 }

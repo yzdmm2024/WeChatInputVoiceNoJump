@@ -7,6 +7,7 @@
 		<key>Bundles</key>
 		<array>
 			<string>com.apple.springboard</string>
+			<string>com.tencent.wetype</string>
 		</array>
 	</dict>
 </dict>
