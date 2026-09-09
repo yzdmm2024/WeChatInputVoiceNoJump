@@ -1,5 +1,5 @@
 //
-//  Tweak.xm — 微信键盘免跳转 + 键盘外观定制 (rootless deb / ElleKit TweakInject) v1.1.12
+//  Tweak.xm — 微信键盘免跳转 + 键盘外观定制 (rootless deb / ElleKit TweakInject) v1.1.13
 //
 //  目标进程（见 WxKbNoJump.plist Filter）：
 //    com.tencent.wetype.keyboard  —— 键盘扩展（语音按钮与键盘 UI 都在这里）
@@ -256,16 +256,23 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 }
 @end
 
-#pragma mark - 免跳转核心：强制 4 判定走“内建路径”（任意 App 都不拉主程序）
+#pragma mark - 免跳转核心（三层防跳，覆盖所有判定入口）
 
 // 关键修正：WBRootViewManager / WBVoiceInputService 是 WeType 运行时类，没有公开头文件，
-// 不能在它们上面写 @interface X (Cat) 分类（编译期会报 “cannot define category for
-// undefined class”）。改用运行期 method_setImplementation 直接替换方法 IMP，替身用 block
-// 实现，无需任何 @interface / 前向声明。
+// 不能在它们上面写 @interface X (Cat) 分类。改用运行期 method_setImplementation 直接替换
+// 方法 IMP，替身用 block 实现，无需任何 @interface / 前向声明。
 //
-// 原理（同微信内建免跳路径）：wx_bool(kNoJumpEnabled) 为真时，强制 4 个判定返回“走扩展内
-// 录音→回填”的值（canUseWcVoice/isUsingWcVoice=YES，prefersJump/requireJump=NO），让第三方
-// App 也走和微信一样的扩展内链路，不再 openURL 拉起 wxkb.app 主程序（即“跳一下”）。
+// 根因（frida 实抓扩展 + IPA 静态）：扩展通过 hostBundleID 记录宿主 App；仅当宿主是微信
+// （wormhole 通道建立）时 canUseWcVoice* 返回 YES → 走“扩展内录音→回填”；第三方宿主没有
+// wormhole → canUseWcVoiceByWormhole / canUseWcVoiceByConfig 返回 NO → 调
+// jumpToPageWithToolBarFunc: 拉起 wxkb.app 主程序（即“跳一下”）。
+// 1.1.12 只改了 canUseWcVoice，漏了 wormhole/config 两个变体，所以第三方 App 仍跳。
+//
+// 1.1.13 三层防跳：
+//  ① 强制全部 canUseWcVoice* = YES、prefers/requireJump = NO → 走扩展内录音路径；
+//  ② 把 jumpToPageWithToolBarFunc: / preJumpToPageWithToolBarFunc: 变空操作（兜底）；
+//  ③ 拦截 LSApplicationWorkspace 拉起 wxkb.app / WXKBURL_STARTVOICERECORD（最后保险）。
+// 这样无论哪个判定被触发，都不可能再跳。
 
 static void wx_overrideReturnBool(Class cls, SEL sel, BOOL forceVal) {
     if (!cls || !sel) return;
@@ -287,18 +294,183 @@ static void wx_overrideReturnBool(Class cls, SEL sel, BOOL forceVal) {
     method_setImplementation(m, newImp);   // 原地替换，保留原 IMP 在 block 内供回退
 }
 
+// 把某方法替换为“空操作”（仅在免跳开启时安装；免跳关闭则保留原实现，不触碰参数类型）
+static void wx_neutralizeVoid(Class cls, SEL sel) {
+    if (!cls || !sel) return;
+    if (!wx_bool(kNoJumpEnabled, YES)) return;   // 免跳关闭时不安装，原行为完全保留
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    id block = ^void(id self, SEL _cmd) { /* no-op：阻止跳转发起 */ };
+    IMP newImp = imp_implementationWithBlock(block);
+    if (!newImp) return;
+    method_setImplementation(m, newImp);
+}
+
+// 拦截 LSApplicationWorkspace 拉起主程序 / 语音跳转 scheme（最后保险）
+static void wx_blockJumpURLScheme(void) {
+    Class ls = NSClassFromString(@"LSApplicationWorkspace");
+    if (!ls) return;
+    SEL s1 = @selector(openURL:);
+    if (class_getInstanceMethod(ls, s1)) {
+        Method m = class_getInstanceMethod(ls, s1);
+        IMP o = method_getImplementation(m); __block IMP oImp = o;
+        id block = ^id(id self, SEL _cmd, NSURL *url) {
+            if (wx_bool(kNoJumpEnabled, YES) && url &&
+                [[url absoluteString] rangeOfString:@"WXKBURL_STARTVOICERECORD"].location != NSNotFound) {
+                NSLog(@"[WxKbNoJump] blocked LSApplicationWorkspace openURL (jump scheme)");
+                return nil;
+            }
+            id (*orig)(id, SEL, id) = (id(*)(id, SEL, id))oImp;
+            return orig(self, _cmd, url);
+        };
+        IMP ni = imp_implementationWithBlock(block);
+        if (ni) method_setImplementation(m, ni);
+    }
+    SEL s2 = @selector(openApplicationWithBundleID:);
+    if (class_getInstanceMethod(ls, s2)) {
+        Method m = class_getInstanceMethod(ls, s2);
+        IMP o = method_getImplementation(m); __block IMP oImp = o;
+        id block = ^id(id self, SEL _cmd, NSString *bid) {
+            if (wx_bool(kNoJumpEnabled, YES) && bid &&
+                [bid isEqualToString:@"com.tencent.wetype"]) {
+                NSLog(@"[WxKbNoJump] blocked LSApplicationWorkspace openApp (jump to main app)");
+                return nil;
+            }
+            id (*orig)(id, SEL, id) = (id(*)(id, SEL, id))oImp;
+            return orig(self, _cmd, bid);
+        };
+        IMP ni = imp_implementationWithBlock(block);
+        if (ni) method_setImplementation(m, ni);
+    }
+}
+
+// 拦截键盘扩展进程内的 openURL（真机 trace 证明跳转正是通过扩展的
+// NSExtensionContext/UIApplication openURL(wetype://WXKBURL_STARTVOICERECORD…) 发起，
+// 而不是 LSApplicationWorkspace）。命中跳转 scheme 时直接吞掉、不真正打开，
+// 同时假装成功回调，让 WeType 以为“已处理”，从而不闪跳、也不拉起 wxkb.app 主程序。
+static void wx_interceptExtOpenURL(void) {
+    if (!wx_bool(kNoJumpEnabled, YES)) return;
+    NSString *const kJmp = @"WXKBURL_STARTVOICERECORD";
+
+    // NSExtensionContext openURL:completionHandler:  （扩展拉起主程序的标准方式）
+    Class ec = NSClassFromString(@"NSExtensionContext");
+    if (ec) {
+        SEL s = @selector(openURL:completionHandler:);
+        Method m = class_getInstanceMethod(ec, s);
+        if (m) {
+            IMP o = method_getImplementation(m); __block IMP oImp = o;
+            id block = ^void(id self, SEL _cmd, NSURL *url, void (^cb)(BOOL)) {
+                NSString *u = [url absoluteString];
+                if (u && [u rangeOfString:kJmp].location != NSNotFound) {
+                    NSLog(@"[WxKbNoJump] BLOCK extension openURL (jump scheme): %@", u);
+                    if (cb) cb(YES);
+                    return;
+                }
+                void (*orig)(id, SEL, id, void(^)(BOOL)) = (void(*)(id,SEL,id,void(^)(BOOL)))oImp;
+                orig(self, _cmd, url, cb);
+            };
+            IMP ni = imp_implementationWithBlock(block);
+            if (ni) method_setImplementation(m, ni);
+        }
+    }
+    // UIApplication openURL: / openURL:options:completionHandler:
+    Class ua = NSClassFromString(@"UIApplication");
+    if (ua) {
+        SEL s1 = @selector(openURL:);
+        Method m1 = class_getInstanceMethod(ua, s1);
+        if (m1) {
+            IMP o = method_getImplementation(m1); __block IMP oImp = o;
+            id block = ^BOOL(id self, SEL _cmd, NSURL *url) {
+                NSString *u = [url absoluteString];
+                if (u && [u rangeOfString:kJmp].location != NSNotFound) {
+                    NSLog(@"[WxKbNoJump] BLOCK UIApplication openURL (jump scheme): %@", u);
+                    return YES;
+                }
+                BOOL (*orig)(id, SEL, id) = (BOOL(*)(id,SEL,id))oImp;
+                return orig(self, _cmd, url);
+            };
+            IMP ni = imp_implementationWithBlock(block);
+            if (ni) method_setImplementation(m1, ni);
+        }
+        SEL s2 = @selector(openURL:options:completionHandler:);
+        Method m2 = class_getInstanceMethod(ua, s2);
+        if (m2) {
+            IMP o = method_getImplementation(m2); __block IMP oImp = o;
+            id block = ^void(id self, SEL _cmd, NSURL *url, id opts, void (^cb)(BOOL)) {
+                NSString *u = [url absoluteString];
+                if (u && [u rangeOfString:kJmp].location != NSNotFound) {
+                    NSLog(@"[WxKbNoJump] BLOCK UIApplication openURL:options: (jump scheme): %@", u);
+                    if (cb) cb(YES);
+                    return;
+                }
+                void (*orig)(id, SEL, id, id, void(^)(BOOL)) = (void(*)(id,SEL,id,id,void(^)(BOOL)))oImp;
+                orig(self, _cmd, url, opts, cb);
+            };
+            IMP ni = imp_implementationWithBlock(block);
+            if (ni) method_setImplementation(m2, ni);
+        }
+    }
+    // UIInputViewController openURL:completionHandler:
+    Class ivc = NSClassFromString(@"UIInputViewController");
+    if (ivc) {
+        SEL s = @selector(openURL:completionHandler:);
+        Method m = class_getInstanceMethod(ivc, s);
+        if (m) {
+            IMP o = method_getImplementation(m); __block IMP oImp = o;
+            id block = ^void(id self, SEL _cmd, NSURL *url, void (^cb)(BOOL)) {
+                NSString *u = [url absoluteString];
+                if (u && [u rangeOfString:kJmp].location != NSNotFound) {
+                    NSLog(@"[WxKbNoJump] BLOCK UIInputViewController openURL (jump scheme): %@", u);
+                    if (cb) cb(YES);
+                    return;
+                }
+                void (*orig)(id, SEL, id, void(^)(BOOL)) = (void(*)(id,SEL,id,void(^)(BOOL)))oImp;
+                orig(self, _cmd, url, cb);
+            };
+            IMP ni = imp_implementationWithBlock(block);
+            if (ni) method_setImplementation(m, ni);
+        }
+    }
+}
+
 static BOOL wx_voiceOverridden = NO;
 static void wx_applyVoiceNoJump(void) {
     if (wx_voiceOverridden) return;
+    // ③-bis 扩展内 openURL 真拦截（真机 trace 证明跳转正是通过扩展的
+    //     NSExtensionContext/UIApplication openURL(wetype://WXKBURL_STARTVOICERECORD) 发起，
+    //     而不是 LSApplicationWorkspace）。这一层是“任何判定被触发都不可能跳”的硬保险。
+    static BOOL s_urlHooked = NO;
+    if (!s_urlHooked) { wx_interceptExtOpenURL(); s_urlHooked = YES; }
     Class rvm = NSClassFromString(@"WBRootViewManager");
     Class vis = NSClassFromString(@"WBVoiceInputService");
-    if (!rvm || !vis) return;   // 类尚未注册（扩展刚启动），稍后重试
+    if (!rvm || !vis) {
+        // 类尚未注册（扩展刚启动 / 懒加载），0.3s 后自重试，最多 ~6s
+        static int s_retries = 0;
+        if (s_retries < 20) {
+            s_retries++;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ wx_applyVoiceNoJump(); });
+        }
+        return;
+    }
+    // ① 强制全部 canUseWcVoice* = YES（走扩展内录音路径）
     wx_overrideReturnBool(rvm, @selector(canUseWcVoice), YES);
-    wx_overrideReturnBool(rvm, @selector(prefersJumpToMainAppForRecording), NO);
+    wx_overrideReturnBool(rvm, @selector(canUseWcVoiceByWormhole), YES);
+    wx_overrideReturnBool(rvm, @selector(canUseWcVoiceByConfig), YES);
     wx_overrideReturnBool(vis, @selector(isUsingWcVoice), YES);
+    // ① 真正总开关（frida dump 出的 nativeMode_* 路径入口）：强制“走扩展内录音”
+    wx_overrideReturnBool(vis, @selector(shouldUseNativeVoiceForCurrentLaunch), YES);
+    wx_overrideReturnBool(vis, @selector(checkCanOpenRecorderDirectly), YES);
+    // ① 强制 prefers/requireJump = NO
+    wx_overrideReturnBool(rvm, @selector(prefersJumpToMainAppForRecording), NO);
     wx_overrideReturnBool(vis, @selector(requireJumpToMainAppForRecording), NO);
+    // ② 兜底：jump 发起方法变空操作
+    wx_neutralizeVoid(rvm, @selector(jumpToPageWithToolBarFunc:));
+    wx_neutralizeVoid(rvm, @selector(preJumpToPageWithToolBarFunc:));
+    // ③ 保险：拦截 LSApplicationWorkspace 拉起主程序
+    wx_blockJumpURLScheme();
     wx_voiceOverridden = YES;
-    NSLog(@"[WxKbNoJump] voice no-jump overrides applied");
+    NSLog(@"[WxKbNoJump] voice no-jump (3-layer) applied");
 }
 
 #pragma mark - WBInputViewController 外观 hook
@@ -326,7 +498,7 @@ static void wx_entry(void) {
     @autoreleasepool {
         BOOL kb = wx_isKbExtension();
         BOOL main = wx_isMainApp();
-        NSLog(@"[WxKbNoJump] LOADED pid=%d kbExt=%d mainApp=%d noJump=%d style=%d v=1.1.12",
+        NSLog(@"[WxKbNoJump] LOADED pid=%d kbExt=%d mainApp=%d noJump=%d style=%d v=1.1.13",
               getpid(), kb, main, wx_bool(kNoJumpEnabled, YES), wx_bool(kStyleEnabled, NO));
 
         // 1) 微信自带免跳标志恒真（锦上添花）
@@ -350,6 +522,6 @@ static void wx_entry(void) {
             if (!wx_voiceOverridden) wx_applyVoiceNoJump();
         });
 
-        NSLog(@"[WxKbNoJump] INIT DONE v1.1.12 (kbExt=%d mainApp=%d)", kb, main);
+        NSLog(@"[WxKbNoJump] INIT DONE v1.1.13 (kbExt=%d mainApp=%d)", kb, main);
     }
 }
