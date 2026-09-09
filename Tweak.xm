@@ -50,7 +50,7 @@ static NSString *const kLetterR = @"wxkbdLetterR", *const kLetterG = @"wxkbdLett
 static NSString *const kFuncR = @"wxkbdFuncR", *const kFuncG = @"wxkbdFuncG",
                       *const kFuncB = @"wxkbdFuncB", *const kFuncA = @"wxkbdFuncA";          // 功能键底色
 static NSString *const kKbR = @"wxkbdKbR", *const kKbG = @"wxkbdKbG",
-                      *const kKbB = @"wxkbdKbB", *const kKbB = @"wxkbdKbA";                  // 键盘背景
+                      *const kKbB = @"wxkbdKbB", *const kKbA = @"wxkbdKbA";                  // 键盘背景
 static NSString *const kCandR = @"wxkbdCandR", *const kCandG = @"wxkbdCandG",
                       *const kCandB = @"wxkbdCandB", *const kCandA = @"wxkbdCandA";          // 候选栏背景
 
@@ -257,6 +257,9 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 @end
 
 #pragma mark - 免跳转核心：强制 4 个判定方法走“内建路径”（任意 App 都不拉主程序）
+
+// WeType 运行时类无头文件，需前向声明，否则分类/方法编译器报 “cannot find interface declaration”
+@class WBRootViewManager, WBVoiceInputService;
 
 #define WX_OVERRIDE_BOOL(clsName, selOrig, selRepl, forceVal) \
 @interface clsName (WxKbNoJump_##selRepl) \
