@@ -256,26 +256,50 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 }
 @end
 
-#pragma mark - 免跳转核心：强制 4 个判定方法走“内建路径”（任意 App 都不拉主程序）
+#pragma mark - 免跳转核心：强制 4 判定走“内建路径”（任意 App 都不拉主程序）
 
-// WeType 运行时类无头文件，需前向声明，否则分类/方法编译器报 “cannot find interface declaration”
-@class WBRootViewManager, WBVoiceInputService;
+// 关键修正：WBRootViewManager / WBVoiceInputService 是 WeType 运行时类，没有公开头文件，
+// 不能在它们上面写 @interface X (Cat) 分类（编译期会报 “cannot define category for
+// undefined class”）。改用运行期 method_setImplementation 直接替换方法 IMP，替身用 block
+// 实现，无需任何 @interface / 前向声明。
+//
+// 原理（同微信内建免跳路径）：wx_bool(kNoJumpEnabled) 为真时，强制 4 个判定返回“走扩展内
+// 录音→回填”的值（canUseWcVoice/isUsingWcVoice=YES，prefersJump/requireJump=NO），让第三方
+// App 也走和微信一样的扩展内链路，不再 openURL 拉起 wxkb.app 主程序（即“跳一下”）。
 
-#define WX_OVERRIDE_BOOL(clsName, selOrig, selRepl, forceVal) \
-@interface clsName (WxKbNoJump_##selRepl) \
-- (BOOL)selRepl; \
-@end \
-@implementation clsName (WxKbNoJump_##selRepl) \
-- (BOOL)selRepl { \
-    if (wx_bool(kNoJumpEnabled, YES)) return forceVal; \
-    return [self selRepl]; \
-} \
-@end
+static void wx_overrideReturnBool(Class cls, SEL sel, BOOL forceVal) {
+    if (!cls || !sel) return;
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    IMP origImp = method_getImplementation(m);
+    const char *enc = method_getTypeEncoding(m);
+    if (!origImp || !enc) return;
+    // block 捕获原 IMP 与强制返回值；免跳关闭时回退到原实现，行为完全还原
+    __block IMP oImp = origImp;
+    __block BOOL fVal = forceVal;
+    id block = ^BOOL(id self, SEL _cmd) {
+        if (wx_bool(kNoJumpEnabled, YES)) return fVal;
+        BOOL (*orig)(id, SEL) = (BOOL(*)(id, SEL))oImp;
+        return orig(self, _cmd);
+    };
+    IMP newImp = imp_implementationWithBlock((__bridge void *)block);
+    if (!newImp) return;
+    method_setImplementation(m, newImp);   // 原地替换，保留原 IMP 在 block 内供回退
+}
 
-WX_OVERRIDE_BOOL(WBRootViewManager, canUseWcVoice, wx_canUseWcVoice, YES)
-WX_OVERRIDE_BOOL(WBRootViewManager, prefersJumpToMainAppForRecording, wx_prefersJump, NO)
-WX_OVERRIDE_BOOL(WBVoiceInputService, isUsingWcVoice, wx_isUsingWcVoice, YES)
-WX_OVERRIDE_BOOL(WBVoiceInputService, requireJumpToMainAppForRecording, wx_requireJump, NO)
+static BOOL wx_voiceOverridden = NO;
+static void wx_applyVoiceNoJump(void) {
+    if (wx_voiceOverridden) return;
+    Class rvm = NSClassFromString(@"WBRootViewManager");
+    Class vis = NSClassFromString(@"WBVoiceInputService");
+    if (!rvm || !vis) return;   // 类尚未注册（扩展刚启动），稍后重试
+    wx_overrideReturnBool(rvm, @selector(canUseWcVoice), YES);
+    wx_overrideReturnBool(rvm, @selector(prefersJumpToMainAppForRecording), NO);
+    wx_overrideReturnBool(vis, @selector(isUsingWcVoice), YES);
+    wx_overrideReturnBool(vis, @selector(requireJumpToMainAppForRecording), NO);
+    wx_voiceOverridden = YES;
+    NSLog(@"[WxKbNoJump] voice no-jump overrides applied");
+}
 
 #pragma mark - WBInputViewController 外观 hook
 
@@ -286,6 +310,8 @@ WX_OVERRIDE_BOOL(WBVoiceInputService, requireJumpToMainAppForRecording, wx_requi
 - (void)wx_kb_viewDidLayoutSubviews {
     [self wx_kb_viewDidLayoutSubviews];
     if (![self isKindOfClass:objc_getClass("WBInputViewController")]) return;
+    // 键盘视图已存在，WeType 语音类必然已注册 → 保证免跳生效（即使启动早期类未就绪）
+    if (!wx_voiceOverridden) wx_applyVoiceNoJump();
     UIView *root = nil;
     if ([self respondsToSelector:@selector(view)]) root = [(UIViewController *)self view];
     if (!root) return;
@@ -307,17 +333,8 @@ static void wx_entry(void) {
         wx_swizzle([NSUserDefaults class], @selector(objectForKey:),    @selector(wx_objectForKey:));
         wx_swizzle([NSUserDefaults class], @selector(boolForKey:),      @selector(wx_boolForKey:));
 
-        // 2) 强制判定方法走内建路径（免跳核心）
-        Class rvm = NSClassFromString(@"WBRootViewManager");
-        if (rvm) {
-            wx_swizzle(rvm, @selector(canUseWcVoice), @selector(wx_canUseWcVoice));
-            wx_swizzle(rvm, @selector(prefersJumpToMainAppForRecording), @selector(wx_prefersJump));
-        }
-        Class vis = NSClassFromString(@"WBVoiceInputService");
-        if (vis) {
-            wx_swizzle(vis, @selector(isUsingWcVoice), @selector(wx_isUsingWcVoice));
-            wx_swizzle(vis, @selector(requireJumpToMainAppForRecording), @selector(wx_requireJump));
-        }
+        // 2) 强制判定方法走内建路径（免跳核心，运行期 IMP 替换）
+        wx_applyVoiceNoJump();   // 类已注册则立即生效；否则下面延后重试
 
         // 3) 外观 hook（延后挂，WBInputViewController 在首帧后才存在）
         static BOOL didHookStyle = NO;
@@ -329,6 +346,8 @@ static void wx_entry(void) {
                 wx_swizzle(c, @selector(viewDidLayoutSubviews), @selector(wx_kb_viewDidLayoutSubviews));
                 didHookStyle = YES;
             }
+            // 延后重试免跳 IMP 替换（扩展启动早期 WBRootViewManager 等可能尚未注册）
+            if (!wx_voiceOverridden) wx_applyVoiceNoJump();
         });
 
         NSLog(@"[WxKbNoJump] INIT DONE v1.1.12 (kbExt=%d mainApp=%d)", kb, main);
