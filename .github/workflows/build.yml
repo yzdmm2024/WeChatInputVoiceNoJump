@@ -7,18 +7,28 @@ on:
 
 jobs:
   build:
-    # macos-13 (Intel) 上 /usr/local 对 runner 用户可写；
-    # macos-latest 已切到 arm64，/usr/local 归 root 且不可写，
-    # 导致 theos-action 缓存解包 gtar 报 Permission denied 而构建失败。
-    runs-on: macos-13
+    # macos-latest 现默认 arm64；theos-action@v1 按 Intel 设计，会把缓存解包到
+    # /usr/local/opt 并往 /usr/local/opt/make/libexec/gnubin 加 PATH。
+    # arm64 上 /usr/local 归 root 不可写 → gtar Permission denied；且 make 路径在
+    # /opt/homebrew。下面两步把缓存目录 chown 可写 + 补正确的 GNU make PATH，
+    # 即可在 arm64 runner 上正常构建（无需等稀缺的 macos-13 Intel runner）。
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Fix perms for theos-action cache (arm64 /usr/local 不可写)
+        if: runner.os == 'macOS'
+        run: sudo mkdir -p /usr/local/opt && sudo chown -R "$(whoami)" /usr/local/opt
 
       - name: Setup Theos
         uses: beerpiss/theos-action@v1
         with:
           theos-sdks: https://github.com/theos/sdks
+
+      - name: Ensure GNU make on PATH (arm64 homebrew 在 /opt/homebrew)
+        if: runner.os == 'macOS'
+        run: echo "/opt/homebrew/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: Build package (rootless)
         run: make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
