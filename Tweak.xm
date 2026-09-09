@@ -1,5 +1,5 @@
 //
-//  Tweak.xm — 微信键盘免跳转 + 键盘外观定制 (rootless deb / ElleKit TweakInject) v1.1.13
+//  Tweak.xm — 微信键盘免跳转 + 键盘外观定制 (rootless deb / ElleKit TweakInject) v1.1.14
 //
 //  目标进程（见 WxKbNoJump.plist Filter）：
 //    com.tencent.wetype.keyboard  —— 键盘扩展（语音按钮与键盘 UI 都在这里）
@@ -273,6 +273,13 @@ static void wx_swizzle(Class cls, SEL orig, SEL repl) {
 //  ② 把 jumpToPageWithToolBarFunc: / preJumpToPageWithToolBarFunc: 变空操作（兜底）；
 //  ③ 拦截 LSApplicationWorkspace 拉起 wxkb.app / WXKBURL_STARTVOICERECORD（最后保险）。
 // 这样无论哪个判定被触发，都不可能再跳。
+//
+// 1.1.14 双保险（兜底录音）：真机 trace 显示，若 WeType 仍走 jump 分支（即没走 nativeMode
+//   内录），扩展会调 openURL(WXKBURL_STARTVOICERECORD) 拉主程序。拦截到该 URL 时，除了
+//   吞掉 openURL（防跳），再【主动】调 WBVoiceInputService 的 nativeMode_launchWithContext:
+//   启动扩展内录音——因为“走到 openURL”本身就证明 WeType 没起内录，此时补一刀不会重复启动。
+//   全部用 respondsToSelector + @try/@catch 包裹，且每次扩展启动只试一次，即使猜测的
+//   单例取不到/方法签名不符也只会打日志、不会崩键盘。日志统一前缀 [WxKbNoJump] native trigger。
 
 static void wx_overrideReturnBool(Class cls, SEL sel, BOOL forceVal) {
     if (!cls || !sel) return;
@@ -344,6 +351,71 @@ static void wx_blockJumpURLScheme(void) {
     }
 }
 
+// 双保险：拦截到跳转 scheme 时，主动拉起扩展内录音（仅当 WeType 没走 nativeMode 时才走到
+// 这里，故不会重复启动）。全程 @try/@catch + respondsToSelector 包裹，取不到单例/方法不符
+// 只打日志不崩。每次扩展启动最多触发一次。
+static void wx_tryStartNativeVoice(NSExtensionContext *ctx) {
+    static BOOL s_tried = NO;
+    if (s_tried) return;                 // 整个扩展生命周期只试一次，避免重复触发录音
+    s_tried = YES;
+    if (!wx_bool(kNoJumpEnabled, YES)) return;
+    @try {
+        Class vis = NSClassFromString(@"WBVoiceInputService");
+        if (!vis) { NSLog(@"[WxKbNoJump] native trigger: WBVoiceInputService class not found"); return; }
+        // 尝试各常见单例取方法，拿到服务实例
+        id svc = nil;
+        NSArray<NSString *> *singletons = @[@"sharedInstance", @"sharedService", @"defaultService",
+                                            @"service", @"currentService", @"sharedVoiceService",
+                                            @"voiceService"];
+        for (NSString *sm in singletons) {
+            SEL s = NSSelectorFromString(sm);
+            if ([vis respondsToSelector:s]) {
+                id (*get)(id, SEL) = (id(*)(id, SEL))objc_msgSend;
+                svc = get(vis, s);
+                if (svc) { NSLog(@"[WxKbNoJump] native trigger: got service via +%@", sm); break; }
+            }
+        }
+        if (!svc) {
+            // 退路：看 WBInputViewController / WBRootViewManager 是否持有 voiceService 属性
+            NSLog(@"[WxKbNoJump] native trigger: no singleton instance, will try property fallback");
+        }
+        if (!ctx) { NSLog(@"[WxKbNoJump] native trigger: extensionContext is nil, abort"); return; }
+
+        // 优先 nativeMode_launchWithContext:finishedBlock:（2 对象参数，用 NSInvocation 安全传）
+        SEL s1 = @selector(nativeMode_launchWithContext:finishedBlock:);
+        if (svc && [svc respondsToSelector:s1]) {
+            void (^fb)(BOOL) = ^(BOOL ok){ NSLog(@"[WxKbNoJump] native trigger finished ok=%d", ok); };
+            NSMethodSignature *sig = [svc methodSignatureForSelector:s1];
+            if (sig) {
+                NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+                [inv setTarget:svc]; [inv setSelector:s1];
+                [inv setArgument:&ctx atIndex:2];
+                [inv setArgument:&fb  atIndex:3];
+                [inv invoke];
+                NSLog(@"[WxKbNoJump] native trigger: called nativeMode_launchWithContext:finishedBlock:");
+                return;
+            }
+        }
+        // 退而求其次：nativeMode_launchWithContext:
+        SEL s2 = @selector(nativeMode_launchWithContext:);
+        if (svc && [svc respondsToSelector:s2]) {
+            ((void(*)(id,SEL,id))objc_msgSend)(svc, s2, ctx);
+            NSLog(@"[WxKbNoJump] native trigger: called nativeMode_launchWithContext:");
+            return;
+        }
+        // 再退：beginRecord（0 参）
+        SEL s3 = @selector(beginRecord);
+        if (svc && [svc respondsToSelector:s3]) {
+            ((void(*)(id,SEL))objc_msgSend)(svc, s3);
+            NSLog(@"[WxKbNoJump] native trigger: called beginRecord");
+            return;
+        }
+        NSLog(@"[WxKbNoJump] native trigger: service found but no suitable launch selector");
+    } @catch (NSException *e) {
+        NSLog(@"[WxKbNoJump] native trigger EXCEPTION: %@", e);
+    }
+}
+
 // 拦截键盘扩展进程内的 openURL（真机 trace 证明跳转正是通过扩展的
 // NSExtensionContext/UIApplication openURL(wetype://WXKBURL_STARTVOICERECORD…) 发起，
 // 而不是 LSApplicationWorkspace）。命中跳转 scheme 时直接吞掉、不真正打开，
@@ -363,6 +435,7 @@ static void wx_interceptExtOpenURL(void) {
                 NSString *u = [url absoluteString];
                 if (u && [u rangeOfString:kJmp].location != NSNotFound) {
                     NSLog(@"[WxKbNoJump] BLOCK extension openURL (jump scheme): %@", u);
+                    wx_tryStartNativeVoice((NSExtensionContext *)self);   // 双保险：主动起内录
                     if (cb) cb(YES);
                     return;
                 }
@@ -421,6 +494,9 @@ static void wx_interceptExtOpenURL(void) {
                 NSString *u = [url absoluteString];
                 if (u && [u rangeOfString:kJmp].location != NSNotFound) {
                     NSLog(@"[WxKbNoJump] BLOCK UIInputViewController openURL (jump scheme): %@", u);
+                    NSExtensionContext *ectx = nil;
+                    @try { if ([self respondsToSelector:@selector(extensionContext)]) ectx = [self extensionContext]; } @catch (NSException *e) {}
+                    wx_tryStartNativeVoice(ectx);   // 双保险：主动起内录
                     if (cb) cb(YES);
                     return;
                 }
@@ -470,7 +546,7 @@ static void wx_applyVoiceNoJump(void) {
     // ③ 保险：拦截 LSApplicationWorkspace 拉起主程序
     wx_blockJumpURLScheme();
     wx_voiceOverridden = YES;
-    NSLog(@"[WxKbNoJump] voice no-jump (3-layer) applied");
+    NSLog(@"[WxKbNoJump] voice no-jump (3-layer + native trigger) applied v1.1.14");
 }
 
 #pragma mark - WBInputViewController 外观 hook
@@ -498,7 +574,7 @@ static void wx_entry(void) {
     @autoreleasepool {
         BOOL kb = wx_isKbExtension();
         BOOL main = wx_isMainApp();
-        NSLog(@"[WxKbNoJump] LOADED pid=%d kbExt=%d mainApp=%d noJump=%d style=%d v=1.1.13",
+        NSLog(@"[WxKbNoJump] LOADED pid=%d kbExt=%d mainApp=%d noJump=%d style=%d v=1.1.14",
               getpid(), kb, main, wx_bool(kNoJumpEnabled, YES), wx_bool(kStyleEnabled, NO));
 
         // 1) 微信自带免跳标志恒真（锦上添花）
@@ -522,6 +598,6 @@ static void wx_entry(void) {
             if (!wx_voiceOverridden) wx_applyVoiceNoJump();
         });
 
-        NSLog(@"[WxKbNoJump] INIT DONE v1.1.13 (kbExt=%d mainApp=%d)", kb, main);
+        NSLog(@"[WxKbNoJump] INIT DONE v1.1.14 (kbExt=%d mainApp=%d)", kb, main);
     }
 }
