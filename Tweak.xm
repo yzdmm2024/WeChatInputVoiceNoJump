@@ -1,5 +1,5 @@
 //
-//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.19
+//  Tweak.xm — 微信键盘(WeType)语音免跳转 (rootless deb / ElleKit TweakInject) v1.1.20
 //
 //  原理（源自开源 WTVRBGLauncher，作者 Lessica / 82Flex，已改写为仅微信输入法并去掉外观定制）：
 //  键盘扩展没有麦克风权限，语音必须在 wxkb.app 主程序里录。所谓「跳一下主程序」本质是
@@ -11,13 +11,15 @@
 //      用一帧快照遮罩消除切换残影，做到“看不出跳”。
 //  结果：wxkb.app 照常在后台录音并把文字回填到输入框，但屏幕上体验即“免跳转”。
 //
-//  强制常开悬浮窗（1.1.18 用 frida 真机确认键名；1.1.19 修正 dylib 安装路径为 /usr/lib/TweakInject，roothide 设备才能注入）：
+//  强制常开悬浮窗（1.1.18 用 frida 真机确认键名；1.1.19 修正 dylib 安装路径为 /usr/lib/TweakInject，roothide 设备才能注入；
+//  1.1.20 修正真正生效方式）：
 //  微信输入法把“录音待机模式”存为类属性 WBVoiceinputPreferences.recordingStandbyMode
 //  （@property(class) NSInteger），持久化在 App Group 的 WBVoiceinputPreferences.plist。
 //  真机实测：悬浮窗模式 = 1，通知栏模式 = 0。
-//  本 tweak 注入 com.tencent.wetype，hook +[WBVoiceinputPreferences recordingStandbyMode]
-//  在开关开启时强制返回 1，使微信输入法始终按“悬浮窗”逻辑运行——注销/重启后也常开，
-//  无需手动再开。关闭开关即恢复系统原值（可切回通知栏模式）。
+//  关键坑（1.1.20 修正）：之前只 hook 了 getter，但微信输入法决定实际模式时读的是 plist/ivar，
+//  不是这个 getter；而且每次启动会把值重置回 0（通知栏 = 全屏跳）。
+//  所以 1.1.20 的做法：① %ctor 启动即把 plist 写成 1（发生在微信输入法读 plist 之前，从根上固化）；
+//  ② hook +setRecordingStandbyMode: 拦住“启动重置回 0”，永远写 1；③ getter 强制兜底。
 //
 //  关键点：绝不拦截 openURL —— 拦了 wxkb.app 起不来，录音就废了。
 //  正确做法是“让跳发生(或按悬浮窗逻辑)、但把动画藏掉 + 强制悬浮窗模式”。
@@ -85,8 +87,14 @@ typedef NS_ENUM(unsigned, SBActivationSetting) {
 
 #pragma mark - 微信输入法语音模式类（强制悬浮窗用）
 
+// 这个类属性 @property(class) NSInteger recordingStandbyMode 才是“录音待机模式”：
+// 真机 frida 实测：悬浮窗模式 = 1，通知栏模式 = 0。
+// 关键修正（1.1.20）：之前只 hook getter，但微信输入法决定实际模式时读的是 plist/ivar，
+// 不是这个 getter；而且每次启动会把值重置回 0（通知栏 = 全屏跳）。
+// 所以必须：① 拦 setter 不让它重置成 0；② 把 App Group 的 plist 也写成 1 持久化。
 @interface WBVoiceinputPreferences : NSObject
 + (long long)recordingStandbyMode;
++ (void)setRecordingStandbyMode:(long long)arg1;
 @end
 
 #pragma mark - 状态
@@ -104,15 +112,46 @@ static void ReloadPrefs(void) {
     NSLog(@"[WxKbNoJump] prefs reloaded noJump=%d forceFloating=%d", gIsEnabled, gForceFloating);
 }
 
-#pragma mark - 强制常开悬浮窗（1.1.18）：hook 类属性 getter 返回 1
+#pragma mark - 强制常开悬浮窗（1.1.20 修正：拦 setter + 持久化 plist）
+
+// 动态定位 App Group 下的 WBVoiceinputPreferences.plist（UUID 设备相关，不能写死）
+static NSString *WxkbVoicePrefsPath(void) {
+    NSString *base = @"/private/var/mobile/Containers/Shared/AppGroup";
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray *groups = [fm contentsOfDirectoryAtPath:base error:nil];
+    for (NSString *g in groups) {
+        NSString *p = [NSString stringWithFormat:@"%@/%@/VoiceFolder/WBVoiceinputPreferences.plist", base, g];
+        if ([fm fileExistsAtPath:p]) return p;
+    }
+    return nil;
+}
+
+// 把 recordingStandbyMode 写成 1 并落盘，复现“手动开悬浮窗”的工作状态
+static void WxkbForcePersistStandby(void) {
+    if (!gForceFloating) return;
+    NSString *p = WxkbVoicePrefsPath();
+    if (!p) { NSLog(@"[WxKbNoJump] voice prefs plist not found, skip persist"); return; }
+    NSMutableDictionary *d = [NSMutableDictionary dictionaryWithContentsOfFile:p];
+    if (!d) d = [NSMutableDictionary dictionary];
+    if ([d[@"recordingStandbyMode"] isEqualToNumber:@1]) return; // 已是 1，避免无谓写盘
+    d[@"recordingStandbyMode"] = @1;
+    BOOL ok = [d writeToFile:p atomically:YES];
+    NSLog(@"[WxKbNoJump] persisted recordingStandbyMode=1 -> %@ ok=%d", p, ok);
+}
 
 %hook WBVoiceinputPreferences
 + (long long)recordingStandbyMode {
-    if (gForceFloating) {
-        // 1 = 悬浮窗模式（真机 frida 实测：悬浮窗=1，通知栏=0）
-        return 1;
-    }
+    if (gForceFloating) return 1;   // 悬浮窗模式（真机实测：悬浮窗=1，通知栏=0）
     return %orig;
+}
++ (void)setRecordingStandbyMode:(long long)arg1 {
+    if (gForceFloating) {
+        // 微信输入法启动时会把值重置回 0（通知栏=全屏跳），这里拦住，永远写 1
+        %orig(1);
+        WxkbForcePersistStandby();
+        return;
+    }
+    %orig;
 }
 %end
 
@@ -192,6 +231,9 @@ static void ReloadPrefs(void) {
         CFNotificationSuspensionBehaviorCoalesce
     );
     NSString *bid = [[NSBundle mainBundle] bundleIdentifier];
-    NSLog(@"[WxKbNoJump] LOADED v1.1.19 noJump=%d forceFloating=%d (SpringBoard anim-disable + WeType floating), bundle=%@",
+    if ([bid isEqualToString:@"com.tencent.wetype"] && gForceFloating) {
+        WxkbForcePersistStandby();   // 启动即把悬浮窗模式固化进 plist，注销/重启后也常开
+    }
+    NSLog(@"[WxKbNoJump] LOADED v1.1.20 noJump=%d forceFloating=%d (SpringBoard anim-disable + WeType floating persist), bundle=%@",
           gIsEnabled, gForceFloating, bid);
 }
