@@ -18,8 +18,11 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
 #pragma mark - 键盘外观预览视图（纯 UIView，drawRect 自绘，绝不涉及未实现选择器）
 
 @interface WxKbKeyboardPreviewView : UIView
-@property (nonatomic, assign) CGFloat radius;
-@property (nonatomic, assign) CGFloat red, green, blue, alpha;
+@property (nonatomic, assign) CGFloat radius, gap, keyHeight, font;
+@property (nonatomic, assign) CGFloat lr, lg, lb, la;   // 字母键底色
+@property (nonatomic, assign) CGFloat fr, fg, fb, fa;   // 功能键底色
+@property (nonatomic, assign) CGFloat kr, kg, kb_, ka;  // 键盘背景
+@property (nonatomic, assign) CGFloat cr, cg, cb, ca;   // 候选栏背景
 @end
 
 @implementation WxKbKeyboardPreviewView
@@ -28,8 +31,11 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
     self = [super initWithFrame:frame];
     if (self) {
         self.backgroundColor = [UIColor clearColor];
-        self.radius = 10.0;
-        self.red = 0.15; self.green = 0.16; self.blue = 0.20; self.alpha = 1.0;
+        _radius = 10; _gap = 6; _keyHeight = 56; _font = 22;
+        _lr = 1; _lg = 1; _lb = 1; _la = 1;
+        _fr = 0.827; _fg = 0.839; _fb = 0.859; _fa = 1;
+        _kr = 0.914; _kg = 0.914; _kb_ = 0.922; _ka = 1;
+        _cr = 0.914; _cg = 0.914; _cb = 0.922; _ca = 1;
     }
     return self;
 }
@@ -39,37 +45,48 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
     CGFloat W = self.bounds.size.width;
     CGFloat H = self.bounds.size.height;
 
-    // 键盘托盘背景：平铺底色（不圆角——整块键盘不圆角，圆角只作用在按键上）
-    CGContextSetRGBFillColor(ctx, self.red, self.green, self.blue, self.alpha);
-    CGContextFillRect(ctx, self.bounds);
+    // 候选栏（顶部一条）
+    CGContextSetRGBFillColor(ctx, _cr, _cg, _cb, _ca);
+    CGRect candRect = CGRectMake(0, 0, W, H * 0.18);
+    CGContextFillRect(ctx, candRect);
 
-    // 三排按键（简化布局，仅用于预览外观）：每个键画成圆角矩形
+    // 键盘背景托盘
+    CGContextSetRGBFillColor(ctx, _kr, _kg, _kb_, _ka);
+    CGRect kbRect = CGRectMake(0, candRect.size.height, W, H - candRect.size.height);
+    CGContextFillRect(ctx, kbRect);
+
+    // 三排按键：字母键(白) / 功能键(灰)，圆角 + 间距 + 高度实时反映
     NSArray *rows = @[
         @[@"Q",@"W",@"E",@"R",@"T",@"Y",@"U",@"I",@"O",@"P"],
         @[@"A",@"S",@"D",@"F",@"G",@"H",@"J",@"K",@"L"],
         @[@"⇧",@"Z",@"X",@"C",@"V",@"B",@"N",@"M",@"⌫"]
     ];
-    CGFloat margin = W * 0.01;
-    CGFloat rowH = (H - margin * 4) / 3.0;
+    CGFloat top0 = candRect.size.height + 6;
+    CGFloat areaH = H - top0 - 6;
+    CGFloat rowH = areaH / 3.0;
+    CGFloat rgap = MAX(_gap, 2);
     for (int i = 0; i < rows.count; i++) {
         NSArray *keys = rows[i];
-        CGFloat top = margin + i * (rowH + margin);
-        CGFloat keyW = (W - margin * (keys.count + 1)) / keys.count;
+        CGFloat rowTop = top0 + i * rowH;
+        CGFloat keyW = (W - rgap * (keys.count + 1)) / keys.count;
         for (int j = 0; j < keys.count; j++) {
-            CGFloat x = margin + j * (keyW + margin);
-            CGRect krect = CGRectMake(x, top, keyW, rowH - margin);
-            // 按键本体：圆角矩形，实时反映「按键圆角」滑块
-            CGContextSetRGBFillColor(ctx, 0.92, 0.92, 0.95, 1.0);
-            UIBezierPath *kr = [UIBezierPath bezierPathWithRoundedRect:krect
-                                                          cornerRadius:self.radius];
+            CGFloat x = rgap + j * (keyW + rgap);
+            CGRect krect = CGRectMake(x, rowTop + rgap/2, keyW, rowH - rgap);
+            BOOL isFunc = (i == 2);  // 第三排为功能键（⇧/⌫）+ 字母，简化：⇧⌫视为功能
+            if (i == 2 && (j == 0 || j == keys.count - 1)) isFunc = YES;
+            CGFloat r = (isFunc ? _fr : _lr), g = (isFunc ? _fg : _lg),
+                    b = (isFunc ? _fb : _lb), a = (isFunc ? _fa : _la);
+            CGContextSetRGBFillColor(ctx, r, g, b, a);
+            UIBezierPath *kr = [UIBezierPath bezierPathWithRoundedRect:krect cornerRadius:_radius];
             [kr fill];
-            UIColor *tc = [UIColor darkGrayColor];
-            NSDictionary *attrs = @{ NSFontAttributeName: [UIFont systemFontOfSize:rowH * 0.35],
-                                     NSForegroundColorAttributeName: tc };
-            CGSize s = [keys[j] sizeWithAttributes:attrs];
-            [keys[j] drawAtPoint:CGPointMake(CGRectGetMidX(krect) - s.width/2,
-                                             CGRectGetMidY(krect) - s.height/2)
-                  withAttributes:attrs];
+            UIColor *tc = isFunc ? [UIColor darkGrayColor] : [UIColor blackColor];
+            UIFont *uf = [UIFont systemFontOfSize:_font];
+            NSDictionary *attrs = @{ NSFontAttributeName: uf, NSForegroundColorAttributeName: tc };
+            NSString *t = keys[j];
+            CGSize s = [t sizeWithAttributes:attrs];
+            [t drawAtPoint:CGPointMake(CGRectGetMidX(krect) - s.width/2,
+                                       CGRectGetMidY(krect) - s.height/2)
+                withAttributes:attrs];
         }
     }
 }
@@ -84,7 +101,6 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
 
 @implementation WxKbNoJumpSettingsController
 
-// 关键：直接读写 PSListController 的 _specifiers 裸 ivar（第一次加载后缓存，避免每次重建）
 - (id)specifiers {
     if (!_specifiers) {
         _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
@@ -96,10 +112,8 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
     [super viewDidLoad];
     self.title = @"微信键盘免跳转";
 
-    // 顶部预览视图（tableHeaderView）。⚠️ 本机 Preferences 框架的 PSListController 用
-    // -table 访问器（非 -tableView），两者都兼容：先试 table，再退 tableView。
     CGFloat W = self.view.bounds.size.width > 0 ? self.view.bounds.size.width : 320;
-    CGFloat headerH = 150;
+    CGFloat headerH = 170;
     self.preview = [[WxKbKeyboardPreviewView alloc] initWithFrame:CGRectMake(16, 8, W - 32, headerH - 16)];
     self.preview.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, W, headerH)];
@@ -119,18 +133,32 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
 }
 
 - (void)refreshPreview {
-    NSArray *specs = [self specifiers];
-    for (PSSpecifier *s in specs) {
+    for (PSSpecifier *s in [self specifiers]) {
         NSString *key = [s propertyForKey:@"key"];
         if (![key isKindOfClass:[NSString class]] || key.length == 0) continue;
         CGFloat f = 0;
         id v = [self readPreference:key];
         if ([v respondsToSelector:@selector(floatValue)]) f = [v floatValue];
-        if      ([key isEqualToString:@"wxkbdCornerRadius"]) _preview.radius = f ?: 10.0;
-        else if ([key isEqualToString:@"wxkbdBgR"])          _preview.red   = f ?: 0.15;
-        else if ([key isEqualToString:@"wxkbdBgG"])          _preview.green = f ?: 0.16;
-        else if ([key isEqualToString:@"wxkbdBgB"])          _preview.blue  = f ?: 0.20;
-        else if ([key isEqualToString:@"wxkbdBgAlpha"])      _preview.alpha = f ?: 1.0;
+        if      ([key isEqualToString:@"wxkbdKeyRadius"]) _preview.radius = f ?: 10;
+        else if ([key isEqualToString:@"wxkbdKeyGap"])    _preview.gap = f ?: 6;
+        else if ([key isEqualToString:@"wxkbdKeyHeight"])  _preview.keyHeight = f ?: 56;
+        else if ([key isEqualToString:@"wxkbdKeyFont"])    _preview.font = f ?: 22;
+        else if ([key isEqualToString:@"wxkbdLetterR"])    _preview.lr = f ?: 1;
+        else if ([key isEqualToString:@"wxkbdLetterG"])    _preview.lg = f ?: 1;
+        else if ([key isEqualToString:@"wxkbdLetterB"])    _preview.lb = f ?: 1;
+        else if ([key isEqualToString:@"wxkbdLetterA"])    _preview.la = f ?: 1;
+        else if ([key isEqualToString:@"wxkbdFuncR"])      _preview.fr = f ?: 0.827;
+        else if ([key isEqualToString:@"wxkbdFuncG"])      _preview.fg = f ?: 0.839;
+        else if ([key isEqualToString:@"wxkbdFuncB"])      _preview.fb = f ?: 0.859;
+        else if ([key isEqualToString:@"wxkbdFuncA"])      _preview.fa = f ?: 1;
+        else if ([key isEqualToString:@"wxkbdKbR"])        _preview.kr = f ?: 0.914;
+        else if ([key isEqualToString:@"wxkbdKbG"])        _preview.kg = f ?: 0.914;
+        else if ([key isEqualToString:@"wxkbdKbB"])        _preview.kb_ = f ?: 0.922;
+        else if ([key isEqualToString:@"wxkbdKbA"])        _preview.ka = f ?: 1;
+        else if ([key isEqualToString:@"wxkbdCandR"])      _preview.cr = f ?: 0.914;
+        else if ([key isEqualToString:@"wxkbdCandG"])      _preview.cg = f ?: 0.914;
+        else if ([key isEqualToString:@"wxkbdCandB"])      _preview.cb = f ?: 0.922;
+        else if ([key isEqualToString:@"wxkbdCandA"])      _preview.ca = f ?: 1;
     }
     [_preview setNeedsDisplay];
 }
@@ -141,17 +169,31 @@ static NSString *const kWxSuite = @"com.wxkbd.nojump";
     return v ? CFBridgingRelease(v) : nil;
 }
 
-// 开关/滑块变动都走这里：先 [super ...] 走 cfprefsd 标准写回（沙盒放行），再实时刷新预览
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
     @try {
         [super setPreferenceValue:value specifier:specifier];
         NSString *key = [specifier propertyForKey:@"key"];
         CGFloat f = [value respondsToSelector:@selector(floatValue)] ? [value floatValue] : 0;
-        if      ([key isEqualToString:@"wxkbdCornerRadius"]) _preview.radius = f;
-        else if ([key isEqualToString:@"wxkbdBgR"])          _preview.red   = f;
-        else if ([key isEqualToString:@"wxkbdBgG"])          _preview.green = f;
-        else if ([key isEqualToString:@"wxkbdBgB"])          _preview.blue  = f;
-        else if ([key isEqualToString:@"wxkbdBgAlpha"])      _preview.alpha = f;
+        if      ([key isEqualToString:@"wxkbdKeyRadius"]) _preview.radius = f;
+        else if ([key isEqualToString:@"wxkbdKeyGap"])    _preview.gap = f;
+        else if ([key isEqualToString:@"wxkbdKeyHeight"])  _preview.keyHeight = f;
+        else if ([key isEqualToString:@"wxkbdKeyFont"])    _preview.font = f;
+        else if ([key isEqualToString:@"wxkbdLetterR"])    _preview.lr = f;
+        else if ([key isEqualToString:@"wxkbdLetterG"])    _preview.lg = f;
+        else if ([key isEqualToString:@"wxkbdLetterB"])    _preview.lb = f;
+        else if ([key isEqualToString:@"wxkbdLetterA"])    _preview.la = f;
+        else if ([key isEqualToString:@"wxkbdFuncR"])      _preview.fr = f;
+        else if ([key isEqualToString:@"wxkbdFuncG"])      _preview.fg = f;
+        else if ([key isEqualToString:@"wxkbdFuncB"])      _preview.fb = f;
+        else if ([key isEqualToString:@"wxkbdFuncA"])      _preview.fa = f;
+        else if ([key isEqualToString:@"wxkbdKbR"])        _preview.kr = f;
+        else if ([key isEqualToString:@"wxkbdKbG"])        _preview.kg = f;
+        else if ([key isEqualToString:@"wxkbdKbB"])        _preview.kb_ = f;
+        else if ([key isEqualToString:@"wxkbdKbA"])        _preview.ka = f;
+        else if ([key isEqualToString:@"wxkbdCandR"])      _preview.cr = f;
+        else if ([key isEqualToString:@"wxkbdCandG"])      _preview.cg = f;
+        else if ([key isEqualToString:@"wxkbdCandB"])      _preview.cb = f;
+        else if ([key isEqualToString:@"wxkbdCandA"])      _preview.ca = f;
         [_preview setNeedsDisplay];
     } @catch (NSException *e) {}
 }

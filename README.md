@@ -8,11 +8,8 @@
 
 ## 功能
 
-1. **语音免跳转**：拦截微信键盘「语音」按钮触发的外跳，直接激活键盘内建语音输入，不再跳回主 App。
-   - NSUserDefaults 对微信自带键 `WBAppSettingsBool_VoiceInput_WcVoiceNoJump` 恒返回 YES（最稳）
-   - 语音按钮（`WBFunctionToolBar`）直接激活内建语音
-   - `UIInputViewController` / `NSExtensionContext` / `UIApplication` 三处 `openURL` 拦截 `wetype://` 语音跳转
-2. **键盘外观定制**：系统-设置面板调节圆角、缩放、不透明度、背景 RGB。
+1. **语音免跳转（任意 App）**：从二进制提取真实判定方法，强制 `WBRootViewManager` / `WBVoiceInputService` 的 `canUseWcVoice` / `prefersJumpToMainAppForRecording` / `isUsingWcVoice` / `requireJumpToMainAppForRecording` 走「内建路径」。这样在备忘录/短信等任意 App 里点语音，都走和微信一样的「键盘扩展内录音→腾讯 ASR→`textDocumentProxy.insertText` 回填」，不再 `openURL` 拉起主程序（即不再跳一下/黑屏）。NSUserDefaults 对 `WBAppSettingsBool_VoiceInput_WcVoiceNoJump` 仍恒返回 YES（锦上添花）。
+2. **键盘外观定制**：从二进制提取真实视图类 `WBKeyView`（每个字母/数字/符号小键）、`WBKeyboardView`（键盘背景）、`WBCandidateView`/`WBSplitCandidateView`（候选栏）。圆角只作用在 `WBKeyView`（不是整块键盘）；字母键/功能键/键盘背景/候选栏分别上色；支持按键圆角/间距/高度/字号，设置面板顶部有实时预览。
 
 ## 为什么不用手工编译的 deb（历史）
 
@@ -46,10 +43,15 @@
   → 重写 `tableView:cellForRowAtIndexPath:` 给每个滑块左侧强制显示中文名、右侧显示当前值；
     在面板顶部加一个 `WxKbKeyboardPreviewView` 绘制简化 QWERTY 键盘，滑动时实时刷新预览。
 
-- **坑I（颜色/圆角不起效 + 第三方还跳）**：1.1.10 把背景色/圆角设到了被遮挡的键盘根视图，所以「颜色压根不起效」、圆角也只在整块键盘上。
+- **坑I（颜色/圆角不起效 + 第三方还跳，1.1.11 的尝试）**：1.1.10 把背景色/圆角设到了被遮挡的键盘根视图，所以「颜色压根不起效」、圆角也只在整块键盘上。
   且 `wx_present` 把**所有 `WB*` VC 一律放行**，第三方 App 里微信输入法 present 的全屏语音 VC（WBVoice*/Redirect*）正好被放过 → 跳一下/黑屏。
   → 1.1.11：`wx_applyStyle` 改为下钻子视图树，给每个按键（`UIKBKeyView`/含 Key 的 WB 类）单独加圆角，给键盘背景/托盘上色（首次记录原色、关闭还原）；
     `wx_present` 在键盘扩展进程内拦截 Voice/Speech/Redirect/Recognize/ASR/Record 类 VC 并改激活内建语音，其余 WB* 内部 VC 仍放行。
+
+- **坑J（1.1.11 仍跳 + 美化仍不对，1.1.12 彻底重写）**：1.1.11 的免跳靠「拦截语音 VC + 瞎调 `WBRootInputView` 的 `initVoiceInputInteractionViewIfNeeded`/`setVoiceInputInteractionViewActive:`」——这两个是猜的私有方法，不产生录音界面；且它把整个 `wetype://` 都吞了、还拦截了扩展内真正的录音面板 VC（那恰恰是微信内建录音 UI），于是「录音界面没有」。美化靠猜 `UIKBKeyView` 也没命中 WeType 真实按键类。
+  → 1.1.12 用 **frida 真机抓包 + IPA 二进制静态提取**拿到真实证据：① 第三方跳转是 `openURL("wetype://WXKBURL_STARTVOICERECORD?...&APN=<宿主>")`，而录音/ASR 实际在键盘扩展内完成（`WBVoiceInputService`/`WBVoiceInputResultReceiver`/`AVAudioSession`）；② 真实按键类 `WBKeyView`、背景 `WBKeyboardView`、候选栏 `WBCandidateView`。
+  → 免跳：删掉瞎调私有方法/拦截录音面板，改为**强制 4 个判定方法走内建路径**（与微信一致），任意 App 点语音都不拉主程序。
+  → 美化：精确命中 `WBKeyView`/`WBKeyboardView`/`WBCandidateView`，完全对齐用户的 HTML 原型（每键圆角 + 字母键/功能键/键盘背景/候选栏 4 套底色 + 间距/高度/字号）。
 
 ## 本地构建
 
